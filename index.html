@@ -392,7 +392,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getDatabase, ref, onValue, runTransaction, set } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getDatabase, ref, onValue, runTransaction, set, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBhKIxpistqd8LKSQFqPai44NTAXJ3SPoI",
@@ -421,7 +421,9 @@ try {
         tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.requestWriteAccess &&
         localStorage.getItem('wa_asked') !== todayKey) {
         localStorage.setItem('wa_asked', todayKey);
-        setTimeout(() => tg.requestWriteAccess(), 1500);
+        setTimeout(() => tg.requestWriteAccess((granted) => {
+            if (granted) update(ref(db, 'users/' + u.id), { can_pm: true }).catch(()=>{});
+        }), 1500);
     }
 } catch (e) { console.warn('requestWriteAccess skipped', e); }
 console.log('🔍 Telegram WebApp ready, initData length:', tg.initData?.length || 0);
@@ -442,6 +444,20 @@ let monetagZoneId = null;
 let monetagSdkUrl = '';
 
 /* ============ DAILY ACTIVE USER TRACK ============ */
+(function registerUser() {
+    const u = tg.initDataUnsafe?.user;
+    if (!u || !u.id) return;   // only real Telegram users
+    runTransaction(ref(db, 'users/' + u.id), (cur) => ({
+        ...(cur || {}),
+        name: u.first_name || 'User',
+        username: u.username || '',
+        can_pm: u.allows_write_to_pm === true ? true : (cur && cur.can_pm === true),
+        blocked: false,
+        first_seen: (cur && cur.first_seen) || Date.now(),
+        last_seen: Date.now()
+    })).catch(() => {});
+})();
+
 (function trackDAU() {
     const today = new Date().toISOString().slice(0,10);
     set(ref(db, 'analytics/dau/' + today + '/' + currentUserId), {
@@ -577,12 +593,15 @@ function checkDeepLink() {
     const startParam = tg.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('file');
     if(startParam) {
         if (deepLinkHandled) return;
-        let videoId = startParam;
-        const m = /^(.+)_(\d{5,})$/.exec(startParam);   // id_userId
-        if (m) videoId = m[1];
-        const targetVideo = allVideos.find(v => v.id === videoId);
-        if(targetVideo) { deepLinkHandled = true; openSingle(videoId); }
-        else { showToast("ভিডিওটি খুঁজে পাওয়া যায়নি!"); }
+        // 1) short code  2) full video id  3) old format: id_userId
+        let target = allVideos.find(v => v.short === startParam)
+                  || allVideos.find(v => v.id === startParam);
+        if (!target) {
+            const m = /^(.+)_(\d{5,})$/.exec(startParam);
+            if (m) target = allVideos.find(v => v.id === m[1]);
+        }
+        if(target) { deepLinkHandled = true; openSingle(target.id); }
+        else if (allVideos.length) { showToast("ভিডিওটি খুঁজে পাওয়া যায়নি!"); }
     }
 }
 
@@ -675,7 +694,9 @@ window.copyLink = (id) => {
         return;
     }
     const sep = base.includes('?') ? '&' : '?';
-    const tgLink = `${base}${sep}startapp=${id}_${currentUserId}`;
+    const vid = allVideos.find(v => v.id === id);
+    const code = (vid && vid.short) ? vid.short : id;
+    const tgLink = `${base}${sep}startapp=${code}`;
     copyText(tgLink).then(() => showToast("✅ Telegram Link Copied!"))
                     .catch(() => showToast("❌ Copy হয়নি"));
 }
