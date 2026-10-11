@@ -414,7 +414,7 @@ input[type="file"] {
     </div>
     <label class="help-text">নাম</label>
     <input type="text" id="vTitle" placeholder="Video Title">
-    
+
     <label class="help-text">📷 ছবি সিলেক্ট করুন (ImgBB-তে অটো আপলোড)</label>
     <input type="file" id="vFile" accept="image/*">
     <div class="upload-progress" id="uploadProgress"><div class="bar" id="uploadBar"></div></div>
@@ -428,7 +428,7 @@ input[type="file"] {
 
     <label class="help-text">ডাউনলোড লিংক</label>
     <input type="text" id="vLink" placeholder="Download link...">
-    
+
     <div style="display:flex; gap:10px;">
       <select id="vCat" style="flex:1"><option value="all">Category</option></select>
       <input type="number" id="vReq" value="1" style="flex:1" placeholder="Ads Count">
@@ -500,10 +500,12 @@ input[type="file"] {
     </div>
 
     <div style="background:rgba(255,255,255,.55); padding:14px; border-radius:18px; margin-bottom:15px; border:1px solid rgba(236,72,153,.3);">
-      <h4 style="margin:0 0 10px; color:#ec4899; font-size:15px;">🚀 Monetag (Zone ID)</h4>
-      <label class="help-text">Zone ID (Example: 12004862)</label>
+      <h4 style="margin:0 0 10px; color:#ec4899; font-size:15px;">🚀 Monetag (Zone ID + SDK URL)</h4>
+      <label class="help-text">Zone ID (Main Zone)</label>
       <input type="number" id="monetagId" placeholder="12004862">
-      <button class="action-btn small" onclick="saveMonetag()">Save Monetag ID</button>
+      <label class="help-text">SDK URL (from Monetag Dashboard)</label>
+      <input type="text" id="monetagSdkUrl" placeholder="https://libtl.com/sdk.js">
+      <button class="action-btn small" onclick="saveMonetag()">Save Monetag Settings</button>
     </div>
 
     <div style="background:rgba(255,255,255,.55); padding:14px; border-radius:18px; margin-bottom:15px;">
@@ -570,21 +572,21 @@ input[type="file"] {
     <h3>✏️ Edit Video</h3>
     <label class="help-text">নাম</label>
     <input type="text" id="eTitle">
-    
+
     <label class="help-text">ছবির URL</label>
     <input type="text" id="eImage">
     <div class="img-preview" id="eImgPreview" style="display:block;">
       <img id="ePreviewImg" alt="Current">
     </div>
-    
+
     <label class="help-text">ডাউনলোড লিংক</label>
     <input type="text" id="eLink">
-    
+
     <div style="display:flex; gap:10px;">
       <select id="eCat" style="flex:1"><option value="all">Category</option></select>
       <input type="number" id="eReq" style="flex:1" placeholder="Ads Count">
     </div>
-    
+
     <div class="modal-actions">
       <button class="action-btn cancel-btn" onclick="closeEditModal()">Cancel</button>
       <button class="action-btn" onclick="saveEditVideo()">Save Changes</button>
@@ -643,7 +645,7 @@ function updateStats() {
     const totalViews = vids.reduce((sum, v) => sum + (v.view_count || 0), 0);
     document.getElementById('statViews').innerText = totalViews;
   });
-  
+
   const today = new Date().toISOString().slice(0,10);
   onValue(ref(db, 'analytics/dau/' + today), s => {
     document.getElementById('statDAU').innerText = s.val() ? Object.keys(s.val()).length : 0;
@@ -808,17 +810,16 @@ window.openEditModal = (id) => {
   const v = allVideosAdmin.find(x => x.id === id);
   if (!v) return;
   editingVideoId = id;
-  
+
   document.getElementById('eTitle').value = v.name || '';
   document.getElementById('eImage').value = v.image_url || '';
   document.getElementById('eLink').value = v.download_link || '';
   document.getElementById('eReq').value = v.ad_watches_required || 1;
-  
+
   const previewImg = document.getElementById('ePreviewImg');
   previewImg.src = v.image_url || FALLBACK_IMG;
   previewImg.onerror = function() { this.onerror = null; this.src = FALLBACK_IMG; };
-  
-  // Populate category dropdown from existing options
+
   const srcSel = document.getElementById('vCat');
   const eSel = document.getElementById('eCat');
   eSel.innerHTML = '';
@@ -829,7 +830,7 @@ window.openEditModal = (id) => {
     if (opt.value === v.category) o.selected = true;
     eSel.appendChild(o);
   });
-  
+
   document.getElementById('editModal').classList.add('active');
 };
 
@@ -845,9 +846,9 @@ window.saveEditVideo = () => {
   const l = document.getElementById('eLink').value.trim();
   const cat = document.getElementById('eCat').value;
   const req = parseInt(document.getElementById('eReq').value) || 1;
-  
+
   if (!t || !img || !l) { alert('All fields required'); return; }
-  
+
   update(ref(db, 'videos/' + editingVideoId), {
     name: t,
     image_url: img,
@@ -863,30 +864,21 @@ window.saveEditVideo = () => {
 /* ============ ANALYTICS ============ */
 function loadAnalytics() {
   const today = new Date().toISOString().slice(0,10);
-  
-  // Today stats
+
   onValue(ref(db, 'analytics/dau/' + today), s => {
     document.getElementById('anaDAU').innerText = s.val() ? Object.keys(s.val()).length : 0;
   }, { onlyOnce: true });
-  
+
   onValue(ref(db, 'analytics/unlocks/' + today), s => {
     const total = s.val() ? Object.values(s.val()).reduce((a,b)=>a+b,0) : 0;
     document.getElementById('anaUnlocks').innerText = total;
   }, { onlyOnce: true });
-  
-  // Videos count
+
   document.getElementById('anaVideos').innerText = allVideosAdmin.length;
-  
-  // Weekly chart
+
   renderWeeklyChart();
-  
-  // Top videos
   renderTopVideos();
-  
-  // Categories
   renderCategoryChart();
-  
-  // Top users
   renderTopUsers();
 }
 
@@ -897,12 +889,12 @@ function renderWeeklyChart() {
     d.setDate(d.getDate() - i);
     days.push(d.toISOString().slice(0,10));
   }
-  
+
   const counts = {};
   let loaded = 0;
   const chartEl = document.getElementById('weeklyChart');
   chartEl.innerHTML = '<div class="empty-chart">Loading...</div>';
-  
+
   days.forEach(day => {
     onValue(ref(db, 'analytics/unlocks/' + day), s => {
       counts[day] = s.val() ? Object.values(s.val()).reduce((a,b)=>a+b,0) : 0;
@@ -910,7 +902,7 @@ function renderWeeklyChart() {
       if (loaded === days.length) render();
     }, { onlyOnce: true });
   });
-  
+
   function render() {
     const max = Math.max(...Object.values(counts), 1);
     let html = '';
@@ -934,12 +926,12 @@ function renderTopVideos() {
   const sorted = [...allVideosAdmin]
     .sort((a,b) => (b.view_count||0) - (a.view_count||0))
     .slice(0, 5);
-  
+
   if (sorted.length === 0) {
     el.innerHTML = '<div class="empty-chart">No videos yet</div>';
     return;
   }
-  
+
   let html = '';
   sorted.forEach((v, i) => {
     const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
@@ -965,13 +957,13 @@ function renderCategoryChart() {
     const cat = v.category || 'uncategorized';
     counts[cat] = (counts[cat] || 0) + 1;
   });
-  
+
   const entries = Object.entries(counts).sort((a,b) => b[1] - a[1]);
   if (entries.length === 0) {
     el.innerHTML = '<div class="empty-chart">No data</div>';
     return;
   }
-  
+
   const max = Math.max(...entries.map(e => e[1]), 1);
   let html = '';
   entries.forEach(([cat, count]) => {
@@ -997,12 +989,12 @@ function renderTopUsers() {
       .map(([id, data]) => ({ id, unlocks: data.unlocks || 0 }))
       .sort((a,b) => b.unlocks - a.unlocks)
       .slice(0, 5);
-    
+
     if (users.length === 0) {
       el.innerHTML = '<div class="empty-chart">No user data</div>';
       return;
     }
-    
+
     const max = Math.max(...users.map(u => u.unlocks), 1);
     let html = '';
     users.forEach(u => {
@@ -1021,7 +1013,11 @@ function renderTopUsers() {
 /* ============ ADS ============ */
 window.saveMonetag = () => {
   const mid = document.getElementById('monetagId').value;
-  update(ref(db, 'settings'), { monetag_id: mid }).then(() => alert('Monetag ID Saved!'));
+  const sdkUrl = document.getElementById('monetagSdkUrl').value;
+  update(ref(db, 'settings'), { 
+    monetag_id: mid,
+    monetag_sdk_url: sdkUrl
+  }).then(() => alert('Monetag settings saved!'));
 };
 
 window.addAdsgramId = () => {
@@ -1062,6 +1058,7 @@ onValue(ref(db, 'settings'), s => {
     document.getElementById('sLimit').value = s.val().ads_limit || 20;
     document.getElementById('sBot').value = s.val().bot_app_link || '';
     document.getElementById('monetagId').value = s.val().monetag_id || '';
+    document.getElementById('monetagSdkUrl').value = s.val().monetag_sdk_url || '';
   }
 });
 
