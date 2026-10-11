@@ -8,7 +8,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Hind+Siliguri:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+<!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Adsgram SDK -->
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 
 <style>
@@ -69,7 +71,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
 }
 .subtitle{font-size:12px;color:var(--text-muted);margin-top:6px;font-weight:500;}
 
-.search-wrapper{position:relative;margin-bottom:12px;animation:popIn .5s .05s ease both;}
+.search-wrapper{position:relative;margin-bottom:12px;}
 .search-input{
   width:100%;padding:15px 56px 15px 20px;border-radius:50px;
   background:var(--glass);
@@ -313,12 +315,14 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
 <body>
 
 <div class="app">
+    <!-- OVERLAY -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loader"></div>
         <div id="loadingText" style="color:#1f1b33; font-size:16px; font-weight:700;">Processing...</div>
         <div id="loadingSub" style="color:#6b7280; font-size:12px; margin-top:6px;">Please do not close</div>
     </div>
 
+    <!-- SINGLE VIEW -->
     <div id="singleView" class="single-view">
         <button class="back-btn" onclick="closeSingle()">
             <i class="fas fa-arrow-left"></i> ফিরে যান
@@ -326,6 +330,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
         <div id="singleCardContainer"></div>
     </div>
 
+    <!-- MAIN CONTENT -->
     <div id="mainContent">
         <div class="header">
             <h1 class="title">VIRAL ZONE VIDEO <i class="fas fa-fire" style="color:#ec4899"></i></h1>
@@ -364,6 +369,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
         </div>
     </div>
 
+    <!-- BOTTOM NAV -->
     <div class="bottom-nav">
         <button class="nav-item active" onclick="nav('homeSec', this)">
             <i class="fas fa-home"></i><span class="nav-text">হোম</span>
@@ -398,9 +404,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+
+/* ============ TELEGRAM WEBAPP INIT ============ */
 const tg = window.Telegram.WebApp;
-tg.expand();
 tg.ready();
+tg.expand();
+console.log('🔍 Telegram WebApp ready, initData length:', tg.initData?.length || 0);
 
 const currentUserId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 90000000) + 10000000;
 
@@ -429,21 +438,24 @@ let monetagSdkUrl = '';
 function loadMonetagSDK(zoneId, sdkUrl) {
     return new Promise((resolve) => {
         if (!zoneId || !sdkUrl) {
-            console.warn('Monetag: zoneId or sdkUrl missing');
+            console.warn('⚠️ Monetag: zoneId or sdkUrl missing');
             return resolve(false);
         }
 
-        // Remove any previous Monetag SDK
+        // ✅ প্রোটোকল-রিলেটিভ URL ঠিক করুন
+        if (sdkUrl.startsWith('//')) {
+            sdkUrl = 'https:' + sdkUrl;
+        }
+
         document.querySelectorAll('script[data-monetag-sdk]').forEach(s => s.remove());
 
-        // If function already exists, ready
         if (typeof window['show_' + zoneId] === 'function') {
             console.log('✅ Monetag already loaded');
             return resolve(true);
         }
 
         const script = document.createElement('script');
-        script.src = sdkUrl;  // Full HTTPS URL
+        script.src = sdkUrl;
         script.dataset.zone = zoneId;
         script.dataset.sdk = 'show_' + zoneId;
         script.setAttribute('data-monetag-sdk', 'true');
@@ -452,7 +464,6 @@ function loadMonetagSDK(zoneId, sdkUrl) {
         let resolved = false;
         script.onload = () => {
             if (resolved) return;
-            // Wait for the global function to be created (some SDKs take time)
             let attempts = 0;
             const checkFn = setInterval(() => {
                 attempts++;
@@ -461,7 +472,7 @@ function loadMonetagSDK(zoneId, sdkUrl) {
                     resolved = true;
                     console.log('✅ Monetag SDK ready, zone:', zoneId);
                     resolve(true);
-                } else if (attempts > 30) { // ~7.5 seconds
+                } else if (attempts > 30) {
                     clearInterval(checkFn);
                     resolved = true;
                     console.warn('⚠️ Monetag show_ function not created after 30 checks');
@@ -478,7 +489,6 @@ function loadMonetagSDK(zoneId, sdkUrl) {
 
         document.head.appendChild(script);
 
-        // Final timeout fallback
         setTimeout(() => {
             if (!resolved) {
                 resolved = true;
@@ -486,7 +496,7 @@ function loadMonetagSDK(zoneId, sdkUrl) {
                 console.log('⏰ Monetag final timeout, function exists?', ok);
                 resolve(ok);
             }
-        }, 10000); // 10 seconds max
+        }, 10000);
     });
 }
 
@@ -499,21 +509,24 @@ function init() {
                     `<iframe src="${settings.tutorial_id}" style="width:100%;height:100%;border:0" allowfullscreen></iframe>`;
             }
 
-            // Load Monetag SDK (only once per zone)
             if(settings.monetag_id && settings.monetag_sdk_url) {
                 if(!monetagLoaded || monetagZoneId !== settings.monetag_id) {
                     monetagZoneId = settings.monetag_id;
                     monetagSdkUrl = settings.monetag_sdk_url;
                     monetagLoaded = await loadMonetagSDK(monetagZoneId, monetagSdkUrl);
                     console.log('🔍 Monetag ready:', monetagLoaded, '| show_' + monetagZoneId + ':', typeof window['show_' + monetagZoneId]);
-                }
-            } else if (settings.monetag_id && !settings.monetag_sdk_url) {
-                // Fallback: try default libtl.com URL if no custom URL set
-                if(!monetagLoaded || monetagZoneId !== settings.monetag_id) {
-                    monetagZoneId = settings.monetag_id;
-                    monetagSdkUrl = 'https://libtl.com/sdk.js';
-                    monetagLoaded = await loadMonetagSDK(monetagZoneId, monetagSdkUrl);
-                    console.log('🔍 Monetag (fallback URL) ready:', monetagLoaded);
+                    // ✅ Preload first ad
+                    if (monetagLoaded) {
+                        window['show_' + monetagZoneId]({
+                            type: 'preload',
+                            ymid: String(currentUserId),
+                            requestVar: 'preload'
+                        }).then(() => {
+                            console.log('✅ Monetag ad preloaded');
+                        }).catch(() => {
+                            console.warn('⚠️ Monetag preload failed (normal on first load)');
+                        });
+                    }
                 }
             }
         }
@@ -647,7 +660,7 @@ window.copyLink = (id) => {
     showToast("Share Link Copied!");
 }
 
-/* ============ UNLOCK FLOW WITH ROBUST AD HANDLING ============ */
+/* ============ UNLOCK FLOW ============ */
 window.handleUnlock = (id, link, req) => {
     const count = getProgress(id);
     if(count >= req) { window.open(link, '_blank'); return; }
@@ -656,32 +669,9 @@ window.handleUnlock = (id, link, req) => {
     const hasMonetag = monetagLoaded && typeof window['show_' + monetagZoneId] === 'function';
     const hasAdsgram = window.Adsgram && adsgramIds.length > 0 && isInsideTelegram();
 
-    // If no ad network is ready, try to load Monetag again on-the-fly
     if(!hasMonetag && !hasAdsgram) {
-        if (settings.monetag_id) {
-            showOverlay("Loading ads...");
-            const sdkUrl = settings.monetag_sdk_url || 'https://libtl.com/sdk.js';
-            loadMonetagSDK(settings.monetag_id, sdkUrl).then(ok => {
-                monetagLoaded = ok;
-                monetagZoneId = settings.monetag_id;
-                if (ok) {
-                    hideOverlay();
-                    // Retry unlock now that SDK is loaded
-                    window.handleUnlock(id, link, req);
-                } else {
-                    hideOverlay();
-                    // Fallback: direct unlock
-                    if(confirm('কোনো অ্যাড লোড হয়নি। সরাসরি আনলক করতে চান?')) {
-                        doUnlock(id, req);
-                    }
-                }
-            });
-            return;
-        }
-        // No Monetag ID configured at all
-        if(confirm('কোনো অ্যাড সেট করা নেই। সরাসরি আনলক করতে চান?')) {
-            doUnlock(id, req);
-        }
+        // ❌ কোনো অ্যাডই নেই → unlock হবে না
+        showToast("❌ কোনো অ্যাড সেট করা নেই! অ্যাডমিনকে জানান।");
         return;
     }
 
@@ -702,69 +692,97 @@ function doUnlock(id, req) {
         trackUnlock(id);
     }
     renderCards();
-    showToast("Unlocked!");
+    if (document.getElementById('singleView').style.display === 'block') {
+        openSingle(id);
+    }
+    showToast("✅ Unlock Successful!");
     tg.HapticFeedback?.notificationOccurred('success');
 }
 
 function playMixedSequence(step, videoId, link, req) {
     const txt = document.getElementById('loadingText');
-    if(step >= 3) {
+    const sub = document.getElementById('loadingSub');
+
+    if (step >= 3) {
         startFinalCountdown(videoId, req);
         return;
     }
-    const delay = 500;
+
     setTimeout(() => {
-        if(step === 1) {
-            // === Monetag Step ===
+        if (step === 1) {
+            /* ===== Monetag Step ===== */
             const showFunc = window['show_' + monetagZoneId];
-            if(monetagLoaded && typeof showFunc === 'function') {
+            if (monetagLoaded && typeof showFunc === 'function') {
                 txt.innerText = "Loading Partner Ad...";
-                try {
-                    // Call show_ function with proper options
-                    showFunc({
-                        type: 'end', // Rewarded Interstitial
-                        timeout: 15, // Wait up to 15 seconds for ad to appear
-                        catchIfNoFeed: true // Don't reject if no ad feed
-                    })
-                    .then((result) => {
-                        console.log('✅ Monetag ad completed:', result);
-                        playMixedSequence(step + 1, videoId, link, req);
-                    })
-                    .catch((err) => {
-                        console.warn('⚠️ Monetag ad error/rejected:', err);
-                        playMixedSequence(step + 1, videoId, link, req);
+                sub.innerText = "Please wait...";
+
+                /* ✅ Step 1: Preload */
+                showFunc({
+                    type: 'preload',
+                    ymid: String(currentUserId),
+                    requestVar: 'unlock_button'
+                }).then(() => {
+                    /* ✅ Step 2: Show after preload success */
+                    return showFunc({
+                        ymid: String(currentUserId),
+                        requestVar: 'unlock_button',
+                        timeout: 15
                     });
-                } catch(e) {
-                    console.warn('⚠️ Monetag call exception:', e);
+                }).then((result) => {
+                    /* ✅ Step 3: Backend confirmed ad event */
+                    console.log('✅ Monetag ad completed:', result);
+                    if (result?.reward_event_type === 'valued') {
+                        console.log('💰 Ad was monetized');
+                    }
                     playMixedSequence(step + 1, videoId, link, req);
-                }
+                }).catch((err) => {
+                    /* ❌ Ad failed → NO unlock */
+                    console.error('❌ Monetag ad failed:', err);
+                    hideOverlay();
+                    showToast("❌ অ্যাড লোড হয়নি! আবার চেষ্টা করুন।");
+                    tg.HapticFeedback?.notificationOccurred('error');
+                    return; // ⛔ IMPORTANT: এখানে থামবে
+                });
             } else {
-                console.warn('⚠️ Monetag SDK not ready, skipping');
+                /* Monetag না থাকলে Adsgram-এ যাও */
+                console.warn('⚠️ Monetag SDK not ready, trying Adsgram...');
                 playMixedSequence(step + 1, videoId, link, req);
             }
         } else {
-            // === Adsgram Step (only inside Telegram) ===
+            /* ===== Adsgram Step ===== */
             txt.innerText = "Loading Video Ad...";
-            if(window.Adsgram && isInsideTelegram() && adsgramIds.length > 0) {
-                const blockId = adsgramIds[step % adsgramIds.length];
+            sub.innerText = "Please wait...";
+
+            if (window.Adsgram && isInsideTelegram() && adsgramIds.length > 0) {
+                const blockId = adsgramIds[0];
                 try {
                     const AdController = window.Adsgram.init({ blockId: blockId });
                     AdController.show()
-                        .then(() => playMixedSequence(step + 1, videoId, link, req))
-                        .catch((err) => {
-                            console.warn('⚠️ Adsgram error:', err);
+                        .then((result) => {
+                            console.log('✅ Adsgram ad completed:', result);
                             playMixedSequence(step + 1, videoId, link, req);
+                        })
+                        .catch((err) => {
+                            /* ❌ Adsgram failed → NO unlock */
+                            console.error('❌ Adsgram ad failed:', err);
+                            hideOverlay();
+                            showToast("❌ অ্যাড দেখতে হবে! আবার চেষ্টা করুন।");
+                            tg.HapticFeedback?.notificationOccurred('error');
+                            return; // ⛔ IMPORTANT
                         });
-                } catch(e) {
-                    console.warn('⚠️ Adsgram call error:', e);
-                    playMixedSequence(step + 1, videoId, link, req);
+                } catch (e) {
+                    console.error('❌ Adsgram exception:', e);
+                    hideOverlay();
+                    showToast("❌ অ্যাড সিস্টেমে সমস্যা! আবার চেষ্টা করুন।");
+                    return;
                 }
             } else {
-                console.warn('⚠️ Adsgram not available');
+                /* Adsgram না থাকলে final countdown-এ যাও */
+                console.warn('⚠️ Adsgram not available, proceeding to final step');
                 playMixedSequence(step + 1, videoId, link, req);
             }
         }
-    }, delay);
+    }, 500);
 }
 
 function incrementViewCount(videoId) {
@@ -788,16 +806,17 @@ function startFinalCountdown(videoId, req) {
     let count = 5;
     const txt = document.getElementById('loadingText');
     const sub = document.getElementById('loadingSub');
-    txt.innerText = `Verification Successful!`;
+    txt.innerText = `✅ Verification Successful!`;
     sub.innerText = `Unlocking in ${count} seconds...`;
+
     const timer = setInterval(() => {
         count--;
-        if(count > 0) { sub.innerText = `Unlocking in ${count} seconds...`; }
-        else {
+        if (count > 0) {
+            sub.innerText = `Unlocking in ${count} seconds...`;
+        } else {
             clearInterval(timer);
             doUnlock(videoId, req);
             hideOverlay();
-            showToast("Unlock Successful!");
         }
     }, 1000);
 }
