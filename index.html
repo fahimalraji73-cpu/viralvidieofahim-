@@ -410,10 +410,11 @@ const FALLBACK_IMG = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(
 
 let allVideos=[], filters=[], menuLinks=[];
 let adsgramIds=[], bannerAds=[];
-let settings={ ads_limit: 20, bot_app_link: "", monetag_id: "" };
+let settings={ ads_limit: 20, bot_app_link: "", monetag_id: "", monetag_sdk_url: "" };
 let currentFilter = 'all';
 let monetagLoaded = false;
 let monetagZoneId = null;
+let monetagSdkUrl = '';
 
 /* ============ DAILY ACTIVE USER TRACK ============ */
 (function trackDAU() {
@@ -424,62 +425,68 @@ let monetagZoneId = null;
     });
 })();
 
-/* ============ AUTO-START BOT ON SHARED LINK ============ */
-function handleAutoBot() {
-    const startParam = tg.initDataUnsafe?.start_param;
-    if (startParam && settings.bot_app_link) {
-        // Already inside bot, nothing extra needed.
-        // But if user came via link, ensure tg.ready and expand are called.
-        tg.ready();
-        tg.expand();
-    }
-}
-handleAutoBot();
-
-/* ============ MONETAG SDK LOADER (FIXED) ============ */
-function loadMonetagSDK(zoneId) {
+/* ============ MONETAG SDK LOADER (ROBUST) ============ */
+function loadMonetagSDK(zoneId, sdkUrl) {
     return new Promise((resolve) => {
-        if (!zoneId) return resolve(false);
-        
-        // Remove existing SDK
+        if (!zoneId || !sdkUrl) {
+            console.warn('Monetag: zoneId or sdkUrl missing');
+            return resolve(false);
+        }
+
+        // Remove any previous Monetag SDK
         document.querySelectorAll('script[data-monetag-sdk]').forEach(s => s.remove());
-        
-        // Remove old show_ function if exists
-        if (window['show_' + zoneId]) return resolve(true);
-        
+
+        // If function already exists, ready
+        if (typeof window['show_' + zoneId] === 'function') {
+            console.log('✅ Monetag already loaded');
+            return resolve(true);
+        }
+
         const script = document.createElement('script');
-        script.src = '//libtl.com/sdk.js';
+        script.src = sdkUrl;  // Full HTTPS URL
         script.dataset.zone = zoneId;
         script.dataset.sdk = 'show_' + zoneId;
         script.setAttribute('data-monetag-sdk', 'true');
         script.async = true;
-        
+
         let resolved = false;
         script.onload = () => {
-            if (!resolved) {
-                resolved = true;
-                console.log('✅ Monetag SDK loaded, zone:', zoneId);
-                // Wait a bit for show_ function to attach
-                setTimeout(() => resolve(typeof window['show_' + zoneId] === 'function'), 500);
-            }
+            if (resolved) return;
+            // Wait for the global function to be created (some SDKs take time)
+            let attempts = 0;
+            const checkFn = setInterval(() => {
+                attempts++;
+                if (typeof window['show_' + zoneId] === 'function') {
+                    clearInterval(checkFn);
+                    resolved = true;
+                    console.log('✅ Monetag SDK ready, zone:', zoneId);
+                    resolve(true);
+                } else if (attempts > 30) { // ~7.5 seconds
+                    clearInterval(checkFn);
+                    resolved = true;
+                    console.warn('⚠️ Monetag show_ function not created after 30 checks');
+                    resolve(false);
+                }
+            }, 250);
         };
         script.onerror = () => {
-            if (!resolved) {
-                resolved = true;
-                console.warn('❌ Monetag SDK failed to load');
-                resolve(false);
-            }
+            if (resolved) return;
+            resolved = true;
+            console.error('❌ Monetag SDK failed to load:', sdkUrl);
+            resolve(false);
         };
-        
+
         document.head.appendChild(script);
-        
-        // Timeout fallback
+
+        // Final timeout fallback
         setTimeout(() => {
             if (!resolved) {
                 resolved = true;
-                resolve(typeof window['show_' + zoneId] === 'function');
+                const ok = typeof window['show_' + zoneId] === 'function';
+                console.log('⏰ Monetag final timeout, function exists?', ok);
+                resolve(ok);
             }
-        }, 6000);
+        }, 10000); // 10 seconds max
     });
 }
 
@@ -491,12 +498,23 @@ function init() {
                 document.getElementById('tutEmbed').innerHTML = 
                     `<iframe src="${settings.tutorial_id}" style="width:100%;height:100%;border:0" allowfullscreen></iframe>`;
             }
-            
-            // Load Monetag SDK
-            if(settings.monetag_id && (!monetagLoaded || monetagZoneId !== settings.monetag_id)) {
-                monetagZoneId = settings.monetag_id;
-                monetagLoaded = await loadMonetagSDK(settings.monetag_id);
-                console.log('Monetag ready:', monetagLoaded);
+
+            // Load Monetag SDK (only once per zone)
+            if(settings.monetag_id && settings.monetag_sdk_url) {
+                if(!monetagLoaded || monetagZoneId !== settings.monetag_id) {
+                    monetagZoneId = settings.monetag_id;
+                    monetagSdkUrl = settings.monetag_sdk_url;
+                    monetagLoaded = await loadMonetagSDK(monetagZoneId, monetagSdkUrl);
+                    console.log('🔍 Monetag ready:', monetagLoaded, '| show_' + monetagZoneId + ':', typeof window['show_' + monetagZoneId]);
+                }
+            } else if (settings.monetag_id && !settings.monetag_sdk_url) {
+                // Fallback: try default libtl.com URL if no custom URL set
+                if(!monetagLoaded || monetagZoneId !== settings.monetag_id) {
+                    monetagZoneId = settings.monetag_id;
+                    monetagSdkUrl = 'https://libtl.com/sdk.js';
+                    monetagLoaded = await loadMonetagSDK(monetagZoneId, monetagSdkUrl);
+                    console.log('🔍 Monetag (fallback URL) ready:', monetagLoaded);
+                }
             }
         }
     });
@@ -552,14 +570,12 @@ function renderFilters() {
 
 function getFilteredList() {
     const q = document.getElementById('searchInput').value.toLowerCase();
-    
     if (currentFilter === 'trending') {
         return [...allVideos]
             .sort((a,b) => (b.view_count||0) - (a.view_count||0))
             .slice(0, 10)
             .filter(v => v.name.toLowerCase().includes(q));
     }
-    
     return allVideos.filter(v => 
         v.name.toLowerCase().includes(q) && 
         (currentFilter==='all' || v.category===currentFilter)
@@ -569,9 +585,7 @@ function getFilteredList() {
 function renderCards() {
     const div = document.getElementById('cards');
     const list = getFilteredList();
-    
     div.innerHTML = list.length ? '' : '<p class="empty-text">😕 কোনো ভিডিও পাওয়া যায়নি</p>';
-    
     list.forEach((v, index) => {
         div.appendChild(createCard(v));
         if ((index + 1) % 2 === 0 && bannerAds.length > 0) {
@@ -628,40 +642,68 @@ window.copyLink = (id) => {
         showToast("Web Link Copied!");
         return;
     }
-    // Telegram link with startapp → auto-opens bot & webapp
     const tgLink = `${botLink}?startapp=${id}_${currentUserId}`;
     navigator.clipboard.writeText(tgLink);
     showToast("Share Link Copied!");
 }
 
+/* ============ UNLOCK FLOW WITH ROBUST AD HANDLING ============ */
 window.handleUnlock = (id, link, req) => {
     const count = getProgress(id);
     if(count >= req) { window.open(link, '_blank'); return; }
     if(getDaily() >= (settings.ads_limit||20)) { showToast("Daily limit reached!"); return; }
-    
-    // Check if we have any ad network available
+
     const hasMonetag = monetagLoaded && typeof window['show_' + monetagZoneId] === 'function';
     const hasAdsgram = window.Adsgram && adsgramIds.length > 0 && isInsideTelegram();
-    
+
+    // If no ad network is ready, try to load Monetag again on-the-fly
     if(!hasMonetag && !hasAdsgram) {
-        // No ads available - allow direct unlock (better UX)
-        if(confirm('কোনো অ্যাড লোড হয়নি। সরাসরি আনলক করতে চান?')) {
-            const currentProgress = getProgress(id) + 1;
-            localStorage.setItem('p_'+id, currentProgress);
-            incDaily();
-            if(currentProgress >= req) { incrementViewCount(id); trackUnlock(id); }
-            renderCards();
-            showToast("Unlocked!");
+        if (settings.monetag_id) {
+            showOverlay("Loading ads...");
+            const sdkUrl = settings.monetag_sdk_url || 'https://libtl.com/sdk.js';
+            loadMonetagSDK(settings.monetag_id, sdkUrl).then(ok => {
+                monetagLoaded = ok;
+                monetagZoneId = settings.monetag_id;
+                if (ok) {
+                    hideOverlay();
+                    // Retry unlock now that SDK is loaded
+                    window.handleUnlock(id, link, req);
+                } else {
+                    hideOverlay();
+                    // Fallback: direct unlock
+                    if(confirm('কোনো অ্যাড লোড হয়নি। সরাসরি আনলক করতে চান?')) {
+                        doUnlock(id, req);
+                    }
+                }
+            });
+            return;
+        }
+        // No Monetag ID configured at all
+        if(confirm('কোনো অ্যাড সেট করা নেই। সরাসরি আনলক করতে চান?')) {
+            doUnlock(id, req);
         }
         return;
     }
-    
+
     showOverlay("Processing...");
     playMixedSequence(0, id, link, req);
 }
 
 function isInsideTelegram() {
     return !!(window.Telegram?.WebApp?.initData) && tg.initData !== '';
+}
+
+function doUnlock(id, req) {
+    const currentProgress = getProgress(id) + 1;
+    localStorage.setItem('p_' + id, currentProgress);
+    incDaily();
+    if (currentProgress >= req) {
+        incrementViewCount(id);
+        trackUnlock(id);
+    }
+    renderCards();
+    showToast("Unlocked!");
+    tg.HapticFeedback?.notificationOccurred('success');
 }
 
 function playMixedSequence(step, videoId, link, req) {
@@ -678,18 +720,26 @@ function playMixedSequence(step, videoId, link, req) {
             if(monetagLoaded && typeof showFunc === 'function') {
                 txt.innerText = "Loading Partner Ad...";
                 try {
-                    showFunc()
-                        .then(() => playMixedSequence(step + 1, videoId, link, req))
-                        .catch((err) => {
-                            console.warn('Monetag error:', err);
-                            playMixedSequence(step + 1, videoId, link, req);
-                        });
+                    // Call show_ function with proper options
+                    showFunc({
+                        type: 'end', // Rewarded Interstitial
+                        timeout: 15, // Wait up to 15 seconds for ad to appear
+                        catchIfNoFeed: true // Don't reject if no ad feed
+                    })
+                    .then((result) => {
+                        console.log('✅ Monetag ad completed:', result);
+                        playMixedSequence(step + 1, videoId, link, req);
+                    })
+                    .catch((err) => {
+                        console.warn('⚠️ Monetag ad error/rejected:', err);
+                        playMixedSequence(step + 1, videoId, link, req);
+                    });
                 } catch(e) {
-                    console.warn('Monetag call error:', e);
+                    console.warn('⚠️ Monetag call exception:', e);
                     playMixedSequence(step + 1, videoId, link, req);
                 }
             } else {
-                console.warn('Monetag SDK not available, skipping');
+                console.warn('⚠️ Monetag SDK not ready, skipping');
                 playMixedSequence(step + 1, videoId, link, req);
             }
         } else {
@@ -702,15 +752,15 @@ function playMixedSequence(step, videoId, link, req) {
                     AdController.show()
                         .then(() => playMixedSequence(step + 1, videoId, link, req))
                         .catch((err) => {
-                            console.warn('Adsgram error:', err);
+                            console.warn('⚠️ Adsgram error:', err);
                             playMixedSequence(step + 1, videoId, link, req);
                         });
                 } catch(e) {
-                    console.warn('Adsgram call error:', e);
+                    console.warn('⚠️ Adsgram call error:', e);
                     playMixedSequence(step + 1, videoId, link, req);
                 }
             } else {
-                console.warn('Adsgram not available (outside Telegram or no ID)');
+                console.warn('⚠️ Adsgram not available');
                 playMixedSequence(step + 1, videoId, link, req);
             }
         }
@@ -730,8 +780,6 @@ function trackUnlock(videoId) {
     const today = new Date().toISOString().slice(0,10);
     const unlockRef = ref(db, 'analytics/unlocks/' + today + '/' + videoId);
     runTransaction(unlockRef, (c) => (c || 0) + 1).catch(()=>{});
-    
-    // Also track per-user unlock count
     const userRef = ref(db, 'analytics/users/' + currentUserId + '/unlocks');
     runTransaction(userRef, (c) => (c || 0) + 1).catch(()=>{});
 }
@@ -747,17 +795,9 @@ function startFinalCountdown(videoId, req) {
         if(count > 0) { sub.innerText = `Unlocking in ${count} seconds...`; }
         else {
             clearInterval(timer);
-            const currentProgress = getProgress(videoId) + 1;
-            localStorage.setItem('p_'+videoId, currentProgress);
-            incDaily();
-            if(currentProgress >= req) {
-                incrementViewCount(videoId);
-                trackUnlock(videoId);
-            }
-            renderCards();
-            if(document.getElementById('singleView').style.display==='block') openSingle(videoId);
-            hideOverlay(); showToast("Unlock Successful!");
-            tg.HapticFeedback?.notificationOccurred('success');
+            doUnlock(videoId, req);
+            hideOverlay();
+            showToast("Unlock Successful!");
         }
     }, 1000);
 }
