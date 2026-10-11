@@ -414,18 +414,39 @@ tg.ready();
 tg.expand();
 
 /* ============ BOT AUTO-START (allow bot to message user) ============ */
-try {
-    const u = tg.initDataUnsafe?.user;
+function botUsernameFromLink() {
+    const m = /t\.me\/([A-Za-z0-9_]+)/i.exec((settings && settings.bot_app_link) || '');
+    return m ? m[1] : '';
+}
+function offerStartBot() {
+    const bot = botUsernameFromLink();
+    if (!bot || !tg.showPopup) return;
     const todayKey = new Date().toDateString();
-    if (u && u.allows_write_to_pm !== true &&
-        tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.requestWriteAccess &&
-        localStorage.getItem('wa_asked') !== todayKey) {
-        localStorage.setItem('wa_asked', todayKey);
+    if (localStorage.getItem('start_offer') === todayKey) return;
+    localStorage.setItem('start_offer', todayKey);
+    tg.showPopup({
+        title: '🔔 আপডেট চালু করুন',
+        message: 'নতুন ভিডিওর আপডেট পেতে বটটি Start করুন।',
+        buttons: [{ id: 'start', type: 'default', text: '▶ Start Bot' }, { type: 'cancel' }]
+    }, (btnId) => {
+        if (btnId === 'start') tg.openTelegramLink('https://t.me/' + bot + '?start=app');
+    });
+}
+function askBotAccess() {
+    try {
+        const u = tg.initDataUnsafe?.user;
+        if (!u || u.allows_write_to_pm === true) return;
+        if (!(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.requestWriteAccess)) {
+            setTimeout(offerStartBot, 2500);
+            return;
+        }
         setTimeout(() => tg.requestWriteAccess((granted) => {
-            if (granted) update(ref(db, 'users/' + u.id), { can_pm: true }).catch(()=>{});
+            if (granted) update(ref(db, 'users/' + u.id), { can_pm: true }).catch(() => {});
+            else offerStartBot();
         }), 1500);
-    }
-} catch (e) { console.warn('requestWriteAccess skipped', e); }
+    } catch (e) { console.warn('askBotAccess skipped', e); }
+}
+askBotAccess();
 console.log('🔍 Telegram WebApp ready, initData length:', tg.initData?.length || 0);
 
 const currentUserId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 90000000) + 10000000;
