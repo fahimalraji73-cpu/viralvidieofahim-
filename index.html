@@ -12,6 +12,9 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <!-- Adsgram SDK -->
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+<!-- Monetag SDK (static tag, standard Telegram Mini App way) -->
+<script src="https://libtl.com/sdk.js" data-zone="12004862" data-sdk="show_12004862"
+        onload="window.__mtStatic='loaded'" onerror="window.__mtStatic='blocked/failed to load'"></script>
 
 <style>
 :root{
@@ -475,6 +478,7 @@ function loadMonetagSDK(zoneId, sdkUrl) {
                 } else if (attempts > 30) {
                     clearInterval(checkFn);
                     resolved = true;
+                    window.__mtDyn='script loaded but show_ function not created';
                     console.warn('⚠️ Monetag show_ function not created after 30 checks');
                     resolve(false);
                 }
@@ -483,6 +487,7 @@ function loadMonetagSDK(zoneId, sdkUrl) {
         script.onerror = () => {
             if (resolved) return;
             resolved = true;
+            window.__mtDyn='script blocked/failed to load';
             console.error('❌ Monetag SDK failed to load:', sdkUrl);
             resolve(false);
         };
@@ -733,7 +738,7 @@ function playMixedSequence(step, videoId, link, req) {
                 });
             } else {
                 hideOverlay();
-                const m = 'Monetag SDK load hoyni. Zone: ' + monetagZoneId + ' | URL: ' + monetagSdkUrl;
+                const m = 'Monetag SDK load hoyni.\nStatic: ' + (window.__mtStatic||'pending') + '\nDynamic: ' + (window.__mtDyn||'pending') + '\nZone: ' + monetagZoneId + '\nURL: ' + monetagSdkUrl;
                 if (tg.showAlert) tg.showAlert(m); else showToast(m);
             }
         } else {
