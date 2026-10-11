@@ -398,6 +398,9 @@ input[type="file"] {
       <div class="dash-btn" onclick="openSection('secCat')"><i class="fas fa-tags"></i> <span>ক্যাটাগরি</span></div>
       <div class="dash-btn" onclick="openSection('secLinks')"><i class="fas fa-link"></i> <span>মেনু লিংক</span></div>
       <div class="dash-btn" onclick="openSection('secSettings')"><i class="fas fa-cogs"></i> <span>সেটিংস</span></div>
+      <div class="dash-btn" onclick="openSection('secUsers')" style="background:linear-gradient(135deg,rgba(16,185,129,.15),rgba(59,130,246,.15));">
+        <i class="fas fa-users" style="color:#10b981;"></i> <span>ইউজার লিস্ট</span>
+      </div>
       <div class="dash-btn" onclick="openSection('secMsg')" style="background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(139,92,246,.15));">
         <i class="fas fa-paper-plane" style="color:#3b82f6;"></i> <span>ইউজারদের মেসেজ</span>
       </div>
@@ -573,6 +576,27 @@ input[type="file"] {
   </div>
 </div>
 
+<!-- USERS LIST -->
+<div class="container"><div id="secUsers" class="section">
+  <div class="header-row">
+    <button class="back-btn" onclick="goHome()"><i class="fas fa-arrow-left"></i> Back</button>
+    <h3>👥 ইউজার লিস্ট</h3>
+    <div></div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-num" id="uTotal">0</div><div class="stat-label">Total</div></div>
+    <div class="stat-card"><div class="stat-num" id="uPm">0</div><div class="stat-label">মেসেজ পারবে</div></div>
+    <div class="stat-card"><div class="stat-num" id="uToday">0</div><div class="stat-label">আজ Active</div></div>
+    <div class="stat-card"><div class="stat-num" id="uBlocked">0</div><div class="stat-label">Blocked</div></div>
+  </div>
+  <div class="admin-search">
+    <input type="text" id="userSearch" placeholder="নাম / @username / ID খুঁজুন..." oninput="renderUsers()">
+    <i class="fas fa-search"></i>
+  </div>
+  <button type="button" class="action-btn small" onclick="loadUsers()">🔄 Refresh</button>
+  <div id="userList" style="margin-top:6px;"></div>
+</div></div>
+
 <!-- BROADCAST MESSAGE -->
 <div class="container"><div id="secMsg" class="section">
   <div class="header-row">
@@ -695,6 +719,7 @@ window.openSection = (id) => {
   document.getElementById(id).classList.add('active');
   if (id === 'secAnalytics') loadAnalytics();
   if (id === 'secMsg') initMsg();
+  if (id === 'secUsers') loadUsers();
 };
 window.goHome = () => {
   document.querySelectorAll('.section').forEach(d => d.classList.remove('active'));
@@ -1179,6 +1204,74 @@ onValue(ref(db, 'settings'), s => {
   }
 });
 
+/* ============ USERS LIST ============ */
+let usersCache = [];
+function timeAgo(ts) {
+  if (!ts) return 'অজানা';
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return 'এইমাত্র';
+  if (m < 60) return m + ' মিনিট আগে';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' ঘণ্টা আগে';
+  return Math.floor(h / 24) + ' দিন আগে';
+}
+window.loadUsers = async () => {
+  const el = document.getElementById('userList');
+  el.innerHTML = '<div class="empty-chart">Loading...</div>';
+  try {
+    const [uSnap, aSnap] = await Promise.all([get(ref(db, 'users')), get(ref(db, 'analytics/users'))]);
+    const u = uSnap.val() || {};
+    const a = aSnap.val() || {};
+    usersCache = Object.entries(u).map(([id, d]) => ({ id, ...d, unlocks: (a[id] && a[id].unlocks) || 0 }));
+    usersCache.sort((x, y) => (y.last_seen || 0) - (x.last_seen || 0));
+    const now = Date.now();
+    document.getElementById('uTotal').innerText = usersCache.length;
+    document.getElementById('uPm').innerText = usersCache.filter(x => x.can_pm === true && !x.blocked).length;
+    document.getElementById('uToday').innerText = usersCache.filter(x => now - (x.last_seen || 0) < 864e5).length;
+    document.getElementById('uBlocked').innerText = usersCache.filter(x => x.blocked).length;
+    renderUsers();
+  } catch (e) {
+    el.innerHTML = '<div class="empty-chart">লোড করা যায়নি: ' + esc(e.message) + '</div>';
+  }
+};
+window.renderUsers = () => {
+  const el = document.getElementById('userList');
+  const q = document.getElementById('userSearch').value.trim().toLowerCase();
+  const list = usersCache.filter(x =>
+    !q || String(x.id).includes(q) || (x.name || '').toLowerCase().includes(q) || (x.username || '').toLowerCase().includes(q));
+  if (!list.length) { el.innerHTML = '<div class="empty-chart">কোনো ইউজার নেই</div>'; return; }
+  el.innerHTML = list.slice(0, 100).map(x => {
+    const status = x.blocked ? '<span class="badge-pill" style="background:rgba(239,68,68,.12);color:#dc2626;">🚫 Blocked</span>'
+      : x.can_pm === true ? '<span class="badge-new">✅ মেসেজ পারবে</span>'
+      : '<span class="badge-pill" style="background:rgba(107,114,128,.12);color:#6b7280;">⚪ Start করেনি?</span>';
+    const initial = esc((x.name || 'U').trim().charAt(0).toUpperCase());
+    return `
+      <div class="list-item">
+        <div style="width:44px;height:44px;border-radius:50%;background:var(--primary-gradient);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;">${initial}</div>
+        <div class="info">
+          <b>${esc(x.name || 'User')} ${x.username ? '<span style="color:#6b7280;font-weight:500;">@' + esc(x.username) + '</span>' : ''}</b>
+          <small>ID: ${esc(x.id)} • ${timeAgo(x.last_seen)} • 🔓 ${x.unlocks}</small>
+          <small>${status}</small>
+        </div>
+        <div class="item-actions">
+          <button class="edit-btn-mini" onclick="msgUser('${esc(x.id)}')"><i class="fas fa-paper-plane"></i></button>
+          <button class="del-btn" onclick="delUser('${esc(x.id)}')">X</button>
+        </div>
+      </div>`;
+  }).join('') + (list.length > 100 ? '<div class="empty-chart">প্রথম ১০০ জন দেখানো হচ্ছে, সার্চ করুন</div>' : '');
+};
+window.msgUser = async (id) => {
+  const token = localStorage.getItem('bc_token');
+  if (!token) { alert('আগে মেসেজ সেকশনে Bot Token সেভ করুন'); return; }
+  const text = prompt('এই ইউজারকে মেসেজ লিখুন:');
+  if (!text) return;
+  const r = await sendOne(token, id, text, '', '');
+  alert(r.ok ? '✅ পাঠানো হয়েছে' : '❌ ' + (r.description || 'Failed'));
+};
+window.delUser = (id) => {
+  if (confirm('এই ইউজারকে লিস্ট থেকে সরাবেন?')) remove(ref(db, 'users/' + id)).then(loadUsers);
+};
+
 /* ============ BROADCAST MESSAGE ============ */
 const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -1316,6 +1409,8 @@ window.sendBroadcast = async (testOnly) => {
   prog.style.display = 'block'; bar.style.width = '0%';
 
   let sent = 0, failed = 0, done = 0, fatal = '';
+  const reasons = {};
+  status.style.whiteSpace = 'pre-line';
   const blockedUpdates = {};
 
   for (const id of ids) {
@@ -1329,6 +1424,8 @@ window.sendBroadcast = async (testOnly) => {
     } else {
       if (r.error_code === 401 || r.error_code === 404) { fatal = 'Bot Token ভুল!'; break; }
       failed++;
+      const rk = r.description || 'Unknown error';
+      reasons[rk] = (reasons[rk] || 0) + 1;
       const d = (r.description || '').toLowerCase();
       if (r.error_code === 403 || d.includes('chat not found') || d.includes('deactivated')) {
         blockedUpdates['users/' + id + '/blocked'] = true;
@@ -1346,7 +1443,11 @@ window.sendBroadcast = async (testOnly) => {
   if (fatal) {
     status.innerText = '❌ ' + fatal;
   } else {
-    status.innerText = `✅ শেষ! Sent: ${sent} | Failed: ${failed}`;
+    let msg = `✅ শেষ! Sent: ${sent} | Failed: ${failed}`;
+    const rs = Object.entries(reasons);
+    if (rs.length) msg += '\n' + rs.map(([k, v]) => `❌ ${v}: ${k}`).join('\n');
+    if (rs.some(([k]) => /chat not found|initiate/i.test(k))) msg += '\n💡 এরা বট Start/Allow করেনি, তাই Telegram পাঠাতে দেয়নি।';
+    status.innerText = msg;
     if (!testOnly) {
       push(ref(db, 'broadcasts'), { ts: Date.now(), text: (text || '[photo]').slice(0, 200), total: ids.length, sent, failed });
     }
