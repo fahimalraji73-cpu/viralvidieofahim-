@@ -666,7 +666,7 @@ window.handleUnlock = (id, link, req) => {
     if(count >= req) { window.open(link, '_blank'); return; }
     if(getDaily() >= (settings.ads_limit||20)) { showToast("Daily limit reached!"); return; }
 
-    const hasMonetag = monetagLoaded && typeof window['show_' + monetagZoneId] === 'function';
+    const hasMonetag = !!monetagZoneId;
     const hasAdsgram = window.Adsgram && adsgramIds.length > 0 && isInsideTelegram();
 
     if(!hasMonetag && !hasAdsgram) {
@@ -710,43 +710,31 @@ function playMixedSequence(step, videoId, link, req) {
 
     setTimeout(() => {
         if (step === 1) {
-            /* ===== Monetag Step ===== */
+            /* ===== Monetag Step (fixed for Telegram) ===== */
             const showFunc = window['show_' + monetagZoneId];
-            if (monetagLoaded && typeof showFunc === 'function') {
+            if (typeof showFunc === 'function') {
                 txt.innerText = "Loading Partner Ad...";
                 sub.innerText = "Please wait...";
 
-                /* ✅ Step 1: Preload */
+                /* Direct show (no preload gating) */
                 showFunc({
-                    type: 'preload',
                     ymid: String(currentUserId),
                     requestVar: 'unlock_button'
-                }).then(() => {
-                    /* ✅ Step 2: Show after preload success */
-                    return showFunc({
-                        ymid: String(currentUserId),
-                        requestVar: 'unlock_button',
-                        timeout: 15
-                    });
                 }).then((result) => {
-                    /* ✅ Step 3: Backend confirmed ad event */
-                    console.log('✅ Monetag ad completed:', result);
-                    if (result?.reward_event_type === 'valued') {
-                        console.log('💰 Ad was monetized');
-                    }
+                    console.log('Monetag ad completed:', result);
                     playMixedSequence(step + 1, videoId, link, req);
                 }).catch((err) => {
-                    /* ❌ Ad failed → NO unlock */
-                    console.error('❌ Monetag ad failed:', err);
+                    console.error('Monetag ad failed:', err);
                     hideOverlay();
-                    showToast("❌ অ্যাড লোড হয়নি! আবার চেষ্টা করুন।");
+                    const msg = (err && (err.message || err.error || JSON.stringify(err))) || 'unknown';
+                    if (tg.showAlert) tg.showAlert('Monetag error: ' + msg);
+                    else showToast('Monetag error: ' + msg);
                     tg.HapticFeedback?.notificationOccurred('error');
-                    return; // ⛔ IMPORTANT: এখানে থামবে
                 });
             } else {
-                /* Monetag না থাকলে Adsgram-এ যাও */
-                console.warn('⚠️ Monetag SDK not ready, trying Adsgram...');
-                playMixedSequence(step + 1, videoId, link, req);
+                hideOverlay();
+                const m = 'Monetag SDK load hoyni. Zone: ' + monetagZoneId + ' | URL: ' + monetagSdkUrl;
+                if (tg.showAlert) tg.showAlert(m); else showToast(m);
             }
         } else {
             /* ===== Adsgram Step ===== */
