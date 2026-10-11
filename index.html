@@ -412,6 +412,18 @@ const db = getDatabase(app);
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
+
+/* ============ BOT AUTO-START (allow bot to message user) ============ */
+try {
+    const u = tg.initDataUnsafe?.user;
+    const todayKey = new Date().toDateString();
+    if (u && u.allows_write_to_pm !== true &&
+        tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.requestWriteAccess &&
+        localStorage.getItem('wa_asked') !== todayKey) {
+        localStorage.setItem('wa_asked', todayKey);
+        setTimeout(() => tg.requestWriteAccess(), 1500);
+    }
+} catch (e) { console.warn('requestWriteAccess skipped', e); }
 console.log('🔍 Telegram WebApp ready, initData length:', tg.initData?.length || 0);
 
 const currentUserId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 90000000) + 10000000;
@@ -424,6 +436,7 @@ let allVideos=[], filters=[], menuLinks=[];
 let adsgramIds=[], bannerAds=[];
 let settings={ ads_limit: 20, bot_app_link: "", monetag_id: "", monetag_sdk_url: "" };
 let currentFilter = 'all';
+let deepLinkHandled = false;
 let monetagLoaded = false;
 let monetagZoneId = null;
 let monetagSdkUrl = '';
@@ -563,9 +576,12 @@ function init() {
 function checkDeepLink() {
     const startParam = tg.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('file');
     if(startParam) {
-        let videoId = startParam.split('_')[0];
+        if (deepLinkHandled) return;
+        let videoId = startParam;
+        const m = /^(.+)_(\d{5,})$/.exec(startParam);   // id_userId
+        if (m) videoId = m[1];
         const targetVideo = allVideos.find(v => v.id === videoId);
-        if(targetVideo) { openSingle(videoId); }
+        if(targetVideo) { deepLinkHandled = true; openSingle(videoId); }
         else { showToast("ভিডিওটি খুঁজে পাওয়া যায়নি!"); }
     }
 }
@@ -653,16 +669,31 @@ function createCard(v) {
 }
 
 window.copyLink = (id) => {
-    const botLink = settings.bot_app_link || "";
-    if(!botLink) {
-        const url = window.location.origin + window.location.pathname + '?file=' + id;
-        navigator.clipboard.writeText(url);
-        showToast("Web Link Copied!");
+    let base = (settings.bot_app_link || "").trim().replace(/\/+$/, '');
+    if(!base) {
+        showToast("❌ Admin Settings-e Bot App Link দিন!");
         return;
     }
-    const tgLink = `${botLink}?startapp=${id}_${currentUserId}`;
-    navigator.clipboard.writeText(tgLink);
-    showToast("Share Link Copied!");
+    const sep = base.includes('?') ? '&' : '?';
+    const tgLink = `${base}${sep}startapp=${id}_${currentUserId}`;
+    copyText(tgLink).then(() => showToast("✅ Telegram Link Copied!"))
+                    .catch(() => showToast("❌ Copy হয়নি"));
+}
+
+function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    }
+    return fallbackCopy(text);
+}
+function fallbackCopy(text) {
+    return new Promise((resolve, reject) => {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy') ? resolve() : reject(); } catch (e) { reject(e); }
+        ta.remove();
+    });
 }
 
 /* ============ UNLOCK FLOW ============ */
@@ -697,7 +728,7 @@ function doUnlock(id, req) {
         trackUnlock(id);
     }
     renderCards();
-    if (document.getElementById('singleView').style.display === 'block') {
+    if (document.getElementById('singleView').classList.contains('active')) {
         openSingle(id);
     }
     showToast("✅ Unlock Successful!");
