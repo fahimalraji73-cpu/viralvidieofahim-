@@ -253,7 +253,7 @@ input[type="file"] {
   transition: width .3s ease;
 }
 
-/* ============ MODAL (Edit Video) ============ */
+/* ============ MODAL ============ */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 500;
   background: rgba(30, 25, 60, .5);
@@ -283,7 +283,7 @@ input[type="file"] {
   box-shadow: none !important;
 }
 
-/* ============ CHART BARS ============ */
+/* ============ CHART ============ */
 .chart-box {
   background: var(--glass);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
@@ -332,7 +332,6 @@ input[type="file"] {
 
 .empty-chart { text-align: center; padding: 20px; color: #9ca3af; font-size: 12px; }
 
-/* ============ TOP CARDS ============ */
 .top-video-card {
   display: flex; align-items: center; gap: 10px;
   padding: 10px; border-radius: 14px;
@@ -399,6 +398,9 @@ input[type="file"] {
       <div class="dash-btn" onclick="openSection('secCat')"><i class="fas fa-tags"></i> <span>ক্যাটাগরি</span></div>
       <div class="dash-btn" onclick="openSection('secLinks')"><i class="fas fa-link"></i> <span>মেনু লিংক</span></div>
       <div class="dash-btn" onclick="openSection('secSettings')"><i class="fas fa-cogs"></i> <span>সেটিংস</span></div>
+      <div class="dash-btn" onclick="openSection('secMsg')" style="background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(139,92,246,.15));">
+        <i class="fas fa-paper-plane" style="color:#3b82f6;"></i> <span>ইউজারদের মেসেজ</span>
+      </div>
       <div class="dash-btn" onclick="openSection('secAnalytics')" style="background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(239,68,68,.15));">
         <i class="fas fa-chart-line" style="color:#f59e0b;"></i> <span>Analytics</span>
       </div>
@@ -444,7 +446,7 @@ input[type="file"] {
     </div>
   </div>
 
-  <!-- ANALYTICS / REVENUE DASHBOARD -->
+  <!-- ANALYTICS -->
   <div id="secAnalytics" class="section">
     <div class="header-row">
       <button class="back-btn" onclick="goHome()"><i class="fas fa-arrow-left"></i> Back</button>
@@ -556,8 +558,13 @@ input[type="file"] {
       <h3>⚙️ সেটিংস</h3>
       <div></div>
     </div>
-    <label class="help-text">Telegram Bot App Link</label>
-    <input type="text" id="sBot" placeholder="https://t.me/your_bot/app">
+    <label class="help-text">🔗 Web App Link (Telegram Mini App Link)</label>
+    <input type="text" id="sBot" placeholder="https://t.me/your_bot/app" oninput="updateBotPreview()">
+    <div style="font-size:11px;color:#6b7280;margin:-6px 0 12px;line-height:1.6;">
+      BotFather → <b>/newapp</b> দিয়ে Mini App বানালে এই লিংক পাবেন। ফরম্যাট: <b>https://t.me/BOT_USERNAME/APP_SHORTNAME</b>
+    </div>
+    <div id="botPreview" style="display:none;background:rgba(255,255,255,.6);border:1px solid rgba(139,92,246,.3);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:11px;word-break:break-all;color:#4b5563;"></div>
+    <button type="button" class="action-btn small" style="margin-bottom:14px;background:linear-gradient(135deg,#3b82f6,#6366f1);" onclick="testBotLink()">🧪 Test Link</button>
     <label class="help-text">Tutorial ID (Youtube)</label>
     <input type="text" id="sTut">
     <label class="help-text">Daily Limit</label>
@@ -566,7 +573,66 @@ input[type="file"] {
   </div>
 </div>
 
-<!-- ============ EDIT MODAL ============ -->
+<!-- BROADCAST MESSAGE -->
+<div class="container"><div id="secMsg" class="section">
+  <div class="header-row">
+    <button class="back-btn" onclick="goHome()"><i class="fas fa-arrow-left"></i> Back</button>
+    <h3>📢 মেসেজ পাঠান</h3>
+    <div></div>
+  </div>
+
+  <div class="chart-box">
+    <h4><i class="fas fa-users"></i> কাকে পাঠাবেন</h4>
+    <select id="mAudience" onchange="updateAudienceCount()">
+      <option value="all">সব ইউজার</option>
+      <option value="pm">শুধু যারা মেসেজ allow করেছে</option>
+      <option value="today">আজকের Active ইউজার</option>
+      <option value="week">গত ৭ দিনের Active ইউজার</option>
+    </select>
+    <div id="audCount" style="font-size:12px;color:#6b7280;margin:-4px 0 6px;">গণনা হচ্ছে...</div>
+    <button type="button" class="action-btn small" style="background:linear-gradient(135deg,#10b981,#059669);" onclick="importOldUsers()">📥 পুরনো ইউজার ইমপোর্ট (DAU থেকে)</button>
+  </div>
+
+  <div class="chart-box">
+    <h4><i class="fas fa-pen"></i> মেসেজ</h4>
+    <label class="help-text">টেক্সট (HTML চলবে: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;a href="..."&gt;link&lt;/a&gt;)</label>
+    <textarea id="mText" style="height:120px" placeholder="🔥 নতুন ভিডিও এসেছে! এখনই দেখুন..."></textarea>
+    <label class="help-text">ছবির URL (ঐচ্ছিক)</label>
+    <input type="text" id="mPhoto" placeholder="https://...">
+    <label class="help-text">বাটন (ঐচ্ছিক)</label>
+    <input type="text" id="mBtnText" placeholder="যেমন: ▶ এখনই দেখুন">
+    <select id="mBtnTarget" onchange="document.getElementById('mBtnVideo').style.display = this.value==='video' ? 'block' : 'none'">
+      <option value="app">বাটন → অ্যাপ খুলবে</option>
+      <option value="video">বাটন → নির্দিষ্ট ভিডিও খুলবে</option>
+    </select>
+    <select id="mBtnVideo" style="display:none"></select>
+  </div>
+
+  <div class="chart-box">
+    <h4><i class="fas fa-key"></i> বট সেটআপ</h4>
+    <label class="help-text">Bot Token (@BotFather থেকে)</label>
+    <input type="password" id="mToken" placeholder="123456789:AAxxxxxxxx">
+    <div style="font-size:11px;color:#6b7280;margin:-6px 0 12px;line-height:1.6;">🔒 টোকেন শুধু এই ফোন/ব্রাউজারে সেভ থাকবে। ফাইলে বা Firebase-এ যাবে না।</div>
+    <label class="help-text">আপনার Telegram ID (টেস্টের জন্য)</label>
+    <input type="number" id="mAdminId" placeholder="123456789">
+    <button type="button" class="action-btn small" onclick="saveMsgSetup()">💾 Save Setup</button>
+  </div>
+
+  <div class="upload-progress" id="bcProgress" style="display:none;height:10px;"><div class="bar" id="bcBar"></div></div>
+  <div id="bcStatus" style="font-size:12px;color:#4b5563;margin:6px 0 10px;"></div>
+
+  <div style="display:flex;gap:10px;">
+    <button class="action-btn edit-btn" id="bcTestBtn" onclick="sendBroadcast(true)">🧪 নিজেকে টেস্ট</button>
+    <button class="action-btn" id="bcSendBtn" onclick="sendBroadcast(false)">🚀 সবাইকে পাঠান</button>
+  </div>
+
+  <div class="chart-box" style="margin-top:18px;">
+    <h4><i class="fas fa-clock-rotate-left"></i> আগের মেসেজ</h4>
+    <div id="bcHistory"></div>
+  </div>
+</div></div>
+
+<!-- EDIT MODAL -->
 <div class="modal-overlay" id="editModal">
   <div class="modal">
     <h3>✏️ Edit Video</h3>
@@ -596,7 +662,7 @@ input[type="file"] {
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getDatabase, ref, set, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getDatabase, ref, set, push, onValue, remove, update, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBhKIxpistqd8LKSQFqPai44NTAXJ3SPoI",
@@ -628,6 +694,7 @@ window.openSection = (id) => {
   document.querySelectorAll('.section').forEach(d => d.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if (id === 'secAnalytics') loadAnalytics();
+  if (id === 'secMsg') initMsg();
 };
 window.goHome = () => {
   document.querySelectorAll('.section').forEach(d => d.classList.remove('active'));
@@ -657,7 +724,7 @@ function updateStats() {
 }
 updateStats();
 
-/* ============ IMAGE PREVIEW + IMGBB UPLOAD ============ */
+/* ============ IMAGE UPLOAD ============ */
 document.getElementById('vFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -729,6 +796,7 @@ window.uploadVideo = async () => {
     category: document.getElementById('vCat').value,
     ad_watches_required: parseInt(document.getElementById('vReq').value) || 1,
     created_at: Date.now(),
+    short: newShort(),
     view_count: 0
   }).then(() => {
     alert('✅ Video Published!');
@@ -747,7 +815,7 @@ window.uploadVideo = async () => {
   });
 };
 
-/* ============ VIDEO LIST WITH EDIT ============ */
+/* ============ VIDEO LIST ============ */
 function isNewVideo(created_at) {
   if (!created_at) return false;
   const age = Date.now() - created_at;
@@ -779,6 +847,7 @@ function renderVideoList() {
             <i class="fas fa-eye"></i> ${views}
             ${newBadge}
             <span class="badge-pill">${v.category || 'all'}</span>
+            ${v.short ? `<span class="badge-pill" style="background:rgba(59,130,246,.12);color:#2563eb;">🔗 ${v.short}</span>` : ''}
           </small>
         </div>
         <div class="item-actions">
@@ -798,14 +867,36 @@ onValue(ref(db, 'videos'), s => {
     });
   }
   renderVideoList();
+  assignMissingShorts();
 });
+
+/* ============ SHORT LINK CODES ============ */
+const SHORT_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
+const pendingShorts = new Set();
+const assigningIds = new Set();
+function newShort() {
+  const used = new Set([...allVideosAdmin.map(v => v.short).filter(Boolean), ...pendingShorts]);
+  let code;
+  do {
+    code = '';
+    for (let i = 0; i < 5; i++) code += SHORT_CHARS[Math.floor(Math.random() * SHORT_CHARS.length)];
+  } while (used.has(code));
+  pendingShorts.add(code);
+  return code;
+}
+function assignMissingShorts() {
+  allVideosAdmin.filter(v => !v.short && !assigningIds.has(v.id)).forEach(v => {
+    assigningIds.add(v.id);
+    update(ref(db, 'videos/' + v.id), { short: newShort() }).catch(() => assigningIds.delete(v.id));
+  });
+}
 
 window.filterVideoList = () => {
   videoSearchQuery = document.getElementById('videoSearch').value;
   renderVideoList();
 };
 
-/* ============ EDIT VIDEO MODAL ============ */
+/* ============ EDIT MODAL ============ */
 window.openEditModal = (id) => {
   const v = allVideosAdmin.find(x => x.id === id);
   if (!v) return;
@@ -1045,21 +1136,238 @@ onValue(ref(db, 'ads_config/banners'), s => {
 });
 
 /* ============ SETTINGS ============ */
+function cleanBotLink(v) {
+  return (v || '').trim().replace(/\/+$/, '').replace(/\?.*$/, '');
+}
+window.updateBotPreview = () => {
+  const box = document.getElementById('botPreview');
+  const link = cleanBotLink(document.getElementById('sBot').value);
+  if (!link) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '📎 ভিডিও শেয়ার লিংক এমন হবে:<br><b>' + link + '?startapp=VIDEO_ID_USERID</b>';
+};
+window.testBotLink = () => {
+  const link = cleanBotLink(document.getElementById('sBot').value);
+  if (!/^https:\/\/t\.me\/[A-Za-z0-9_]+\/[A-Za-z0-9_]+$/.test(link)) {
+    alert('❌ লিংক ঠিক না। এমন হতে হবে: https://t.me/your_bot/app');
+    return;
+  }
+  window.open(link, '_blank');
+};
 window.saveSettings = () => {
+  const link = cleanBotLink(document.getElementById('sBot').value);
+  if (link && !/^https:\/\/t\.me\/[A-Za-z0-9_]+\/[A-Za-z0-9_]+$/.test(link)) {
+    alert('❌ Web App Link ঠিক না!\nসঠিক ফরম্যাট: https://t.me/your_bot/app');
+    return;
+  }
+  document.getElementById('sBot').value = link;
   update(ref(db, 'settings'), {
     tutorial_id: document.getElementById('sTut').value,
-    ads_limit: parseInt(document.getElementById('sLimit').value),
-    bot_app_link: document.getElementById('sBot').value
-  }).then(() => alert('Settings Saved'));
+    ads_limit: parseInt(document.getElementById('sLimit').value) || 20,
+    bot_app_link: link
+  }).then(() => { alert('✅ Settings Saved'); updateBotPreview(); });
 };
 onValue(ref(db, 'settings'), s => {
   if (s.val()) {
     document.getElementById('sTut').value = s.val().tutorial_id || '';
     document.getElementById('sLimit').value = s.val().ads_limit || 20;
     document.getElementById('sBot').value = s.val().bot_app_link || '';
+    const bu = document.getElementById('mUrl'); if (bu && document.activeElement !== bu) bu.value = s.val().broadcast_url || '';
+    updateBotPreview();
     document.getElementById('monetagId').value = s.val().monetag_id || '';
     document.getElementById('monetagSdkUrl').value = s.val().monetag_sdk_url || '';
   }
+});
+
+/* ============ BROADCAST MESSAGE ============ */
+const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+window.initMsg = () => {
+  const sel = document.getElementById('mBtnVideo');
+  sel.innerHTML = '';
+  allVideosAdmin.forEach(v => { sel.innerHTML += `<option value="${v.id}">${esc(v.name)}</option>`; });
+  document.getElementById('mToken').value = localStorage.getItem('bc_token') || '';
+  document.getElementById('mAdminId').value = localStorage.getItem('bc_admin_id') || '';
+  updateAudienceCount();
+};
+
+window.saveMsgSetup = () => {
+  localStorage.setItem('bc_token', document.getElementById('mToken').value.trim());
+  localStorage.setItem('bc_admin_id', document.getElementById('mAdminId').value.trim());
+  alert('✅ Setup Saved (শুধু এই ডিভাইসে)');
+};
+
+async function getAudienceIds() {
+  const snap = await get(ref(db, 'users'));
+  const all = snap.val() || {};
+  const mode = document.getElementById('mAudience').value;
+  const now = Date.now();
+  return Object.entries(all).filter(([id, u]) => {
+    if (u.blocked) return false;
+    if (mode === 'pm') return u.can_pm === true;
+    if (mode === 'today') return now - (u.last_seen || 0) < 864e5;
+    if (mode === 'week') return now - (u.last_seen || 0) < 7 * 864e5;
+    return true;
+  }).map(([id]) => id);
+}
+
+window.updateAudienceCount = async () => {
+  const el = document.getElementById('audCount');
+  try {
+    const ids = await getAudienceIds();
+    el.innerText = '👥 ' + ids.length + ' জন ইউজারকে পাঠানো হবে';
+  } catch (e) { el.innerText = 'গণনা করা যায়নি'; }
+};
+
+window.importOldUsers = async () => {
+  if (!confirm('analytics/dau থেকে পুরনো ইউজার users-এ ইমপোর্ট করবেন?\n(যারা বট Start করেনি তারা পাঠানোর সময় আপনাআপনি বাদ পড়বে)')) return;
+  const snap = await get(ref(db, 'analytics/dau'));
+  const days = snap.val() || {};
+  const updates = {};
+  let n = 0;
+  Object.entries(days).forEach(([day, users]) => {
+    Object.entries(users || {}).forEach(([id, d]) => {
+      if (!/^\d{5,}$/.test(id)) return;
+      const ts = (d && d.ts) || 0;
+      const base = 'users/' + id;
+      if (!updates[base + '/last_seen'] || updates[base + '/last_seen'] < ts) {
+        updates[base + '/last_seen'] = ts;
+      }
+      updates[base + '/name'] = (d && d.name) || 'User';
+      updates[base + '/first_seen'] = updates[base + '/first_seen'] ? Math.min(updates[base + '/first_seen'], ts) : ts;
+      n++;
+    });
+  });
+  if (!n) { alert('কোনো পুরনো ইউজার পাওয়া যায়নি'); return; }
+  await update(ref(db), updates);
+  alert('✅ ইমপোর্ট শেষ');
+  updateAudienceCount();
+};
+
+let bcRunning = false;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function tgCall(token, method, params) {
+  const body = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => body.append(k, v));
+  try {
+    const res = await fetch('https://api.telegram.org/bot' + token + '/' + method, { method: 'POST', body });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, error_code: 0, description: 'Network error' };
+  }
+}
+
+async function sendOne(token, chatId, text, photo, markup) {
+  const mk = markup ? { reply_markup: markup } : {};
+  if (photo) {
+    const shortText = text && text.length <= 1024;
+    const p = { chat_id: chatId, photo };
+    if (shortText) { p.caption = text; p.parse_mode = 'HTML'; }
+    if (shortText || !text) Object.assign(p, mk);
+    const r = await tgCall(token, 'sendPhoto', p);
+    if (!r.ok || shortText || !text) return r;
+  }
+  return tgCall(token, 'sendMessage', Object.assign(
+    { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: 'true' }, mk));
+}
+
+window.sendBroadcast = async (testOnly) => {
+  if (bcRunning) return;
+  const token = document.getElementById('mToken').value.trim();
+  const text = document.getElementById('mText').value.trim();
+  const photo = document.getElementById('mPhoto').value.trim();
+  const btnText = document.getElementById('mBtnText').value.trim();
+  const target = document.getElementById('mBtnTarget').value;
+  const adminId = document.getElementById('mAdminId').value.trim();
+
+  if (!token) { alert('আগে Bot Token দিন ও Save Setup চাপুন'); return; }
+  if (!text && !photo) { alert('মেসেজ বা ছবি দিন'); return; }
+
+  let markup = '';
+  if (btnText) {
+    const sSnap = await get(ref(db, 'settings/bot_app_link'));
+    const base = (sSnap.val() || '').trim().replace(/\/+$/, '');
+    if (!base) { alert('বাটনের জন্য সেটিংসে Web App Link দিন'); return; }
+    let btnUrl = base;
+    if (target === 'video') {
+      const v = allVideosAdmin.find(x => x.id === document.getElementById('mBtnVideo').value);
+      if (v) btnUrl = base + '?startapp=' + (v.short || v.id);
+    }
+    markup = JSON.stringify({ inline_keyboard: [[{ text: btnText, url: btnUrl }]] });
+  }
+
+  let ids;
+  if (testOnly) {
+    if (!adminId) { alert('আপনার Telegram ID দিন'); return; }
+    ids = [adminId];
+  } else {
+    ids = await getAudienceIds();
+    if (!ids.length) { alert('কোনো ইউজার নেই'); return; }
+    if (!confirm(ids.length + ' জন ইউজারকে মেসেজ পাঠাবেন?\n(পাঠানো চলাকালীন পেজ বন্ধ করবেন না)')) return;
+  }
+
+  bcRunning = true;
+  document.getElementById('bcSendBtn').disabled = true;
+  document.getElementById('bcTestBtn').disabled = true;
+  const prog = document.getElementById('bcProgress');
+  const bar = document.getElementById('bcBar');
+  const status = document.getElementById('bcStatus');
+  prog.style.display = 'block'; bar.style.width = '0%';
+
+  let sent = 0, failed = 0, done = 0, fatal = '';
+  const blockedUpdates = {};
+
+  for (const id of ids) {
+    let r = await sendOne(token, id, text, photo, markup);
+    if (!r.ok && r.error_code === 429) {
+      await sleep(((r.parameters && r.parameters.retry_after) || 2) * 1000 + 500);
+      r = await sendOne(token, id, text, photo, markup);
+    }
+    if (r.ok) {
+      sent++;
+    } else {
+      if (r.error_code === 401 || r.error_code === 404) { fatal = 'Bot Token ভুল!'; break; }
+      failed++;
+      const d = (r.description || '').toLowerCase();
+      if (r.error_code === 403 || d.includes('chat not found') || d.includes('deactivated')) {
+        blockedUpdates['users/' + id + '/blocked'] = true;
+      }
+    }
+    done++;
+    bar.style.width = Math.round(done / ids.length * 100) + '%';
+    status.innerText = `📤 ${done}/${ids.length} • ✅ ${sent} • ❌ ${failed}`;
+    await sleep(60);   // ~16 msg/sec, Telegram limit is 30/sec
+  }
+
+  if (Object.keys(blockedUpdates).length && !testOnly) {
+    try { await update(ref(db), blockedUpdates); } catch (e) {}
+  }
+  if (fatal) {
+    status.innerText = '❌ ' + fatal;
+  } else {
+    status.innerText = `✅ শেষ! Sent: ${sent} | Failed: ${failed}`;
+    if (!testOnly) {
+      push(ref(db, 'broadcasts'), { ts: Date.now(), text: (text || '[photo]').slice(0, 200), total: ids.length, sent, failed });
+    }
+    updateAudienceCount();
+  }
+  bcRunning = false;
+  document.getElementById('bcSendBtn').disabled = false;
+  document.getElementById('bcTestBtn').disabled = false;
+};
+
+onValue(ref(db, 'broadcasts'), s => {
+  const el = document.getElementById('bcHistory');
+  if (!s.val()) { el.innerHTML = '<div class="empty-chart">এখনো কিছু পাঠানো হয়নি</div>'; return; }
+  const rows = Object.values(s.val()).sort((a, b) => b.ts - a.ts).slice(0, 5);
+  el.innerHTML = rows.map(r => `
+    <div class="list-item">
+      <div class="info">
+        <b>${esc(r.text)}</b>
+        <small>${new Date(r.ts).toLocaleString()} • ✅ ${r.sent} / ${r.total} • ❌ ${r.failed}</small>
+      </div>
+    </div>`).join('');
 });
 
 /* ============ CATEGORY ============ */
