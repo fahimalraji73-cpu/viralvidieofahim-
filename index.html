@@ -116,6 +116,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
   background:var(--primary-gradient);color:#fff;border-color:transparent;
   box-shadow:0 8px 22px rgba(236,72,153,.32);
 }
+.filter-btn.trending-btn.active{background:linear-gradient(135deg,#f59e0b,#ef4444);}
 .badge{
   position:absolute;top:-7px;right:-4px;height:19px;min-width:19px;padding:0 5px;
   background:linear-gradient(135deg,#f43f5e,#ec4899);color:#fff;
@@ -134,8 +135,24 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
   box-shadow:0 10px 30px rgba(94,63,190,.12), inset 0 1px 0 rgba(255,255,255,.9);
   animation:popIn .45s ease both;
   transition:transform .25s ease, box-shadow .25s ease;
+  position:relative;
 }
 .card:active{transform:scale(.985);}
+
+.new-badge{
+  position:absolute;top:12px;left:12px;z-index:5;
+  background:linear-gradient(135deg,#10b981,#059669);
+  color:#fff;font-size:10px;font-weight:800;letter-spacing:.8px;
+  padding:4px 10px;border-radius:50px;
+  box-shadow:0 4px 14px rgba(16,185,129,.5);
+  display:flex;align-items:center;gap:4px;
+  animation:pulseNew 2s ease-in-out infinite;
+}
+@keyframes pulseNew{
+  0%,100%{transform:scale(1);box-shadow:0 4px 14px rgba(16,185,129,.5);}
+  50%{transform:scale(1.06);box-shadow:0 6px 20px rgba(16,185,129,.7);}
+}
+.new-badge i{font-size:8px;}
 
 .banner-wrapper{
   width:100%;overflow:hidden;border-radius:18px;margin:4px 0;
@@ -366,7 +383,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getDatabase, ref, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getDatabase, ref, onValue, runTransaction, set } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBhKIxpistqd8LKSQFqPai44NTAXJ3SPoI",
@@ -381,7 +398,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const tg = window.Telegram.WebApp; tg.expand();
+const tg = window.Telegram.WebApp;
+tg.expand();
+tg.ready();
+
 const currentUserId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 90000000) + 10000000;
 
 const FALLBACK_IMG = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(
@@ -393,19 +413,90 @@ let adsgramIds=[], bannerAds=[];
 let settings={ ads_limit: 20, bot_app_link: "", monetag_id: "" };
 let currentFilter = 'all';
 let monetagLoaded = false;
+let monetagZoneId = null;
+
+/* ============ DAILY ACTIVE USER TRACK ============ */
+(function trackDAU() {
+    const today = new Date().toISOString().slice(0,10);
+    set(ref(db, 'analytics/dau/' + today + '/' + currentUserId), {
+        ts: Date.now(),
+        name: tg.initDataUnsafe?.user?.first_name || 'User'
+    });
+})();
+
+/* ============ AUTO-START BOT ON SHARED LINK ============ */
+function handleAutoBot() {
+    const startParam = tg.initDataUnsafe?.start_param;
+    if (startParam && settings.bot_app_link) {
+        // Already inside bot, nothing extra needed.
+        // But if user came via link, ensure tg.ready and expand are called.
+        tg.ready();
+        tg.expand();
+    }
+}
+handleAutoBot();
+
+/* ============ MONETAG SDK LOADER (FIXED) ============ */
+function loadMonetagSDK(zoneId) {
+    return new Promise((resolve) => {
+        if (!zoneId) return resolve(false);
+        
+        // Remove existing SDK
+        document.querySelectorAll('script[data-monetag-sdk]').forEach(s => s.remove());
+        
+        // Remove old show_ function if exists
+        if (window['show_' + zoneId]) return resolve(true);
+        
+        const script = document.createElement('script');
+        script.src = '//libtl.com/sdk.js';
+        script.dataset.zone = zoneId;
+        script.dataset.sdk = 'show_' + zoneId;
+        script.setAttribute('data-monetag-sdk', 'true');
+        script.async = true;
+        
+        let resolved = false;
+        script.onload = () => {
+            if (!resolved) {
+                resolved = true;
+                console.log('✅ Monetag SDK loaded, zone:', zoneId);
+                // Wait a bit for show_ function to attach
+                setTimeout(() => resolve(typeof window['show_' + zoneId] === 'function'), 500);
+            }
+        };
+        script.onerror = () => {
+            if (!resolved) {
+                resolved = true;
+                console.warn('❌ Monetag SDK failed to load');
+                resolve(false);
+            }
+        };
+        
+        document.head.appendChild(script);
+        
+        // Timeout fallback
+        setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                resolve(typeof window['show_' + zoneId] === 'function');
+            }
+        }, 6000);
+    });
+}
 
 function init() {
-    onValue(ref(db, 'settings'), s => {
+    onValue(ref(db, 'settings'), async s => {
         if(s.val()) {
             settings = s.val();
-            if(settings.tutorial_id) document.getElementById('tutEmbed').innerHTML=`<iframe src="${settings.tutorial_id}" style="width:100%;height:100%;border:0" allowfullscreen></iframe>`;
-            if(settings.monetag_id && !monetagLoaded) {
-                const script = document.createElement('script');
-                script.src = '//libtl.com/sdk.js';
-                script.dataset.zone = settings.monetag_id;
-                script.dataset.sdk = 'show_' + settings.monetag_id;
-                document.head.appendChild(script);
-                monetagLoaded = true;
+            if(settings.tutorial_id) {
+                document.getElementById('tutEmbed').innerHTML = 
+                    `<iframe src="${settings.tutorial_id}" style="width:100%;height:100%;border:0" allowfullscreen></iframe>`;
+            }
+            
+            // Load Monetag SDK
+            if(settings.monetag_id && (!monetagLoaded || monetagZoneId !== settings.monetag_id)) {
+                monetagZoneId = settings.monetag_id;
+                monetagLoaded = await loadMonetagSDK(settings.monetag_id);
+                console.log('Monetag ready:', monetagLoaded);
             }
         }
     });
@@ -443,22 +534,44 @@ function checkDeepLink() {
     }
 }
 
-function getCount(cat) { return cat === 'all' ? allVideos.length : allVideos.filter(v => v.category === cat).length; }
+function getCount(cat) {
+    if(cat === 'all') return allVideos.length;
+    if(cat === 'trending') return Math.min(10, allVideos.length);
+    return allVideos.filter(v => v.category === cat).length;
+}
 
 function renderFilters() {
     const div = document.getElementById('filterContainer');
-    let html = `<button class="filter-btn ${currentFilter==='all'?'active':''}" onclick="setFilter('all', this)">All <span class="badge">${getCount('all')}</span></button>`;
+    let html = `<button class="filter-btn trending-btn ${currentFilter==='trending'?'active':''}" onclick="setFilter('trending', this)">🔥 Trending <span class="badge">${getCount('trending')}</span></button>`;
+    html += `<button class="filter-btn ${currentFilter==='all'?'active':''}" onclick="setFilter('all', this)">All <span class="badge">${getCount('all')}</span></button>`;
     filters.forEach(f => {
         html += `<button class="filter-btn ${currentFilter===f.id?'active':''}" onclick="setFilter('${f.id}', this)">${f.name} <span class="badge">${getCount(f.id)}</span></button>`;
     });
     div.innerHTML = html;
 }
 
+function getFilteredList() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    
+    if (currentFilter === 'trending') {
+        return [...allVideos]
+            .sort((a,b) => (b.view_count||0) - (a.view_count||0))
+            .slice(0, 10)
+            .filter(v => v.name.toLowerCase().includes(q));
+    }
+    
+    return allVideos.filter(v => 
+        v.name.toLowerCase().includes(q) && 
+        (currentFilter==='all' || v.category===currentFilter)
+    );
+}
+
 function renderCards() {
     const div = document.getElementById('cards');
-    const q = document.getElementById('searchInput').value.toLowerCase();
-    const list = allVideos.filter(v => (v.name.toLowerCase().includes(q)) && (currentFilter==='all' || v.category===currentFilter));
+    const list = getFilteredList();
+    
     div.innerHTML = list.length ? '' : '<p class="empty-text">😕 কোনো ভিডিও পাওয়া যায়নি</p>';
+    
     list.forEach((v, index) => {
         div.appendChild(createCard(v));
         if ((index + 1) % 2 === 0 && bannerAds.length > 0) {
@@ -470,12 +583,19 @@ function renderCards() {
     });
 }
 
+function isNewVideo(created_at) {
+    if (!created_at) return false;
+    const ageMs = Date.now() - created_at;
+    return ageMs > 0 && ageMs < (24 * 60 * 60 * 1000);
+}
+
 function createCard(v) {
     const liked = getLiked().includes(v.id);
     const count = getProgress(v.id);
     const req = v.ad_watches_required || 1;
     const isUnlocked = count >= req;
     const imgSrc = (v.image_url && String(v.image_url).trim()) ? v.image_url : FALLBACK_IMG;
+    const showNew = isNewVideo(v.created_at);
 
     const el = document.createElement('div');
     el.className = 'card';
@@ -483,6 +603,7 @@ function createCard(v) {
         <div class="media">
             <img src="${imgSrc}" alt="" loading="lazy" referrerpolicy="no-referrer"
                  onerror="this.onerror=null;this.src='${FALLBACK_IMG}'">
+            ${showNew ? '<div class="new-badge"><i class="fas fa-bolt"></i> NEW</div>' : ''}
             <button class="heart-btn" onclick="toggleLike('${v.id}')"><i class="${liked?'fas':'far'} fa-heart" style="color:${liked?'#ec4899':'#9ca3af'}"></i></button>
         </div>
         <div class="meta">
@@ -507,6 +628,7 @@ window.copyLink = (id) => {
         showToast("Web Link Copied!");
         return;
     }
+    // Telegram link with startapp → auto-opens bot & webapp
     const tgLink = `${botLink}?startapp=${id}_${currentUserId}`;
     navigator.clipboard.writeText(tgLink);
     showToast("Share Link Copied!");
@@ -516,33 +638,81 @@ window.handleUnlock = (id, link, req) => {
     const count = getProgress(id);
     if(count >= req) { window.open(link, '_blank'); return; }
     if(getDaily() >= (settings.ads_limit||20)) { showToast("Daily limit reached!"); return; }
-    if(adsgramIds.length === 0) { alert("Admin: Add Adsgram IDs"); return; }
+    
+    // Check if we have any ad network available
+    const hasMonetag = monetagLoaded && typeof window['show_' + monetagZoneId] === 'function';
+    const hasAdsgram = window.Adsgram && adsgramIds.length > 0 && isInsideTelegram();
+    
+    if(!hasMonetag && !hasAdsgram) {
+        // No ads available - allow direct unlock (better UX)
+        if(confirm('কোনো অ্যাড লোড হয়নি। সরাসরি আনলক করতে চান?')) {
+            const currentProgress = getProgress(id) + 1;
+            localStorage.setItem('p_'+id, currentProgress);
+            incDaily();
+            if(currentProgress >= req) { incrementViewCount(id); trackUnlock(id); }
+            renderCards();
+            showToast("Unlocked!");
+        }
+        return;
+    }
+    
     showOverlay("Processing...");
     playMixedSequence(0, id, link, req);
 }
 
+function isInsideTelegram() {
+    return !!(window.Telegram?.WebApp?.initData) && tg.initData !== '';
+}
+
 function playMixedSequence(step, videoId, link, req) {
     const txt = document.getElementById('loadingText');
-    if(step >= 3) { startFinalCountdown(videoId, req); return; }
+    if(step >= 3) {
+        startFinalCountdown(videoId, req);
+        return;
+    }
     const delay = 500;
     setTimeout(() => {
         if(step === 1) {
-            if(settings.monetag_id) {
+            // === Monetag Step ===
+            const showFunc = window['show_' + monetagZoneId];
+            if(monetagLoaded && typeof showFunc === 'function') {
                 txt.innerText = "Loading Partner Ad...";
-                const sdkFunc = window['show_' + settings.monetag_id];
-                if(typeof sdkFunc === 'function') {
-                    sdkFunc().then(() => playMixedSequence(step + 1, videoId, link, req))
-                           .catch(e => playMixedSequence(step + 1, videoId, link, req));
-                } else { playMixedSequence(step + 1, videoId, link, req); }
-            } else { playMixedSequence(step + 1, videoId, link, req); }
+                try {
+                    showFunc()
+                        .then(() => playMixedSequence(step + 1, videoId, link, req))
+                        .catch((err) => {
+                            console.warn('Monetag error:', err);
+                            playMixedSequence(step + 1, videoId, link, req);
+                        });
+                } catch(e) {
+                    console.warn('Monetag call error:', e);
+                    playMixedSequence(step + 1, videoId, link, req);
+                }
+            } else {
+                console.warn('Monetag SDK not available, skipping');
+                playMixedSequence(step + 1, videoId, link, req);
+            }
         } else {
+            // === Adsgram Step (only inside Telegram) ===
             txt.innerText = "Loading Video Ad...";
-            if(window.Adsgram) {
+            if(window.Adsgram && isInsideTelegram() && adsgramIds.length > 0) {
                 const blockId = adsgramIds[step % adsgramIds.length];
-                const AdController = window.Adsgram.init({ blockId: blockId });
-                AdController.show().then((result) => playMixedSequence(step + 1, videoId, link, req))
-                            .catch((result) => playMixedSequence(step + 1, videoId, link, req));
-            } else { playMixedSequence(step + 1, videoId, link, req); }
+                try {
+                    const AdController = window.Adsgram.init({ blockId: blockId });
+                    AdController.show()
+                        .then(() => playMixedSequence(step + 1, videoId, link, req))
+                        .catch((err) => {
+                            console.warn('Adsgram error:', err);
+                            playMixedSequence(step + 1, videoId, link, req);
+                        });
+                } catch(e) {
+                    console.warn('Adsgram call error:', e);
+                    playMixedSequence(step + 1, videoId, link, req);
+                }
+            } else {
+                console.warn('Adsgram not available (outside Telegram or no ID)');
+                playMixedSequence(step + 1, videoId, link, req);
+            }
         }
     }, delay);
 }
@@ -554,6 +724,16 @@ function incrementViewCount(videoId) {
     runTransaction(vidRef, (currentViews) => (currentViews || 0) + 1)
         .then(() => { localStorage.setItem(storageKey, 'true'); })
         .catch(err => console.error("View update failed", err));
+}
+
+function trackUnlock(videoId) {
+    const today = new Date().toISOString().slice(0,10);
+    const unlockRef = ref(db, 'analytics/unlocks/' + today + '/' + videoId);
+    runTransaction(unlockRef, (c) => (c || 0) + 1).catch(()=>{});
+    
+    // Also track per-user unlock count
+    const userRef = ref(db, 'analytics/users/' + currentUserId + '/unlocks');
+    runTransaction(userRef, (c) => (c || 0) + 1).catch(()=>{});
 }
 
 function startFinalCountdown(videoId, req) {
@@ -570,10 +750,14 @@ function startFinalCountdown(videoId, req) {
             const currentProgress = getProgress(videoId) + 1;
             localStorage.setItem('p_'+videoId, currentProgress);
             incDaily();
-            if(currentProgress >= req) { incrementViewCount(videoId); }
+            if(currentProgress >= req) {
+                incrementViewCount(videoId);
+                trackUnlock(videoId);
+            }
             renderCards();
             if(document.getElementById('singleView').style.display==='block') openSingle(videoId);
             hideOverlay(); showToast("Unlock Successful!");
+            tg.HapticFeedback?.notificationOccurred('success');
         }
     }, 1000);
 }
@@ -609,11 +793,11 @@ function renderLiked() {
     d.innerHTML = v.length?'':'<p class="empty-text">💔 পছন্দের ভিডিও নেই</p>';
     v.forEach(x=>d.appendChild(createCard(x)));
 }
-window.nav = (id, btn) => { ['homeSec','likedSec','tutSec','linkSec'].forEach(s=>document.getElementById(s).classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); if(id==='homeSec') document.getElementById('mainContent').style.display='block'; }
-window.setFilter = (id, btn) => { currentFilter=id; renderFilters(); renderCards(); }
+window.nav = (id, btn) => { ['homeSec','likedSec','tutSec','linkSec'].forEach(s=>document.getElementById(s).classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); if(id==='homeSec') document.getElementById('mainContent').style.display='block'; tg.HapticFeedback?.selectionChanged(); }
+window.setFilter = (id, btn) => { currentFilter=id; renderFilters(); renderCards(); tg.HapticFeedback?.selectionChanged(); }
 document.getElementById('searchInput').oninput = renderCards;
 function getLiked(){ return JSON.parse(localStorage.getItem('likes')||'[]'); }
-window.toggleLike=(id)=>{ let l=getLiked(); if(l.includes(id)) l=l.filter(x=>x!==id); else l.push(id); localStorage.setItem('likes',JSON.stringify(l)); renderCards(); renderLiked(); }
+window.toggleLike=(id)=>{ let l=getLiked(); if(l.includes(id)) l=l.filter(x=>x!==id); else l.push(id); localStorage.setItem('likes',JSON.stringify(l)); renderCards(); renderLiked(); tg.HapticFeedback?.impactOccurred('light'); }
 function getProgress(id){ return parseInt(localStorage.getItem('p_'+id)||0); }
 function getDaily(){ const d=JSON.parse(localStorage.getItem('daily')||'{}'); return d.date===new Date().toDateString()?d.count:0; }
 function incDaily(){ localStorage.setItem('daily', JSON.stringify({date:new Date().toDateString(), count:getDaily()+1})); }
