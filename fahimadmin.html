@@ -365,12 +365,26 @@ input[type="file"] {
 </head>
 <body>
 
+<!-- LOGIN GATE -->
+<div id="loginGate" style="position:fixed;inset:0;z-index:2000;background:#eef0ff;background-image:radial-gradient(circle at 12% 8%, rgba(139,92,246,.30), transparent 42%),radial-gradient(circle at 88% 16%, rgba(236,72,153,.22), transparent 42%);display:flex;align-items:center;justify-content:center;padding:20px;">
+  <div style="width:100%;max-width:380px;background:rgba(255,255,255,.85);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid #fff;border-radius:26px;padding:26px 22px;box-shadow:0 20px 60px rgba(70,45,150,.25);text-align:center;">
+    <div style="font-size:42px;margin-bottom:6px;">🔐</div>
+    <h3 id="gateTitle" style="margin:0 0 6px;font-size:20px;">Admin Login</h3>
+    <p id="gateHint" style="margin:0 0 16px;font-size:12px;color:#6b7280;">লোড হচ্ছে...</p>
+    <input type="password" id="gPass" placeholder="পাসওয়ার্ড" autocomplete="current-password">
+    <input type="password" id="gPass2" placeholder="পাসওয়ার্ড আবার দিন" style="display:none" autocomplete="new-password">
+    <button class="action-btn" id="gBtn" onclick="submitGate()" disabled>Login</button>
+    <div id="gErr" style="color:#dc2626;font-size:12px;margin-top:10px;min-height:16px;"></div>
+  </div>
+</div>
+
 <div class="container">
   <!-- DASHBOARD -->
   <div id="dashboard">
     <div class="admin-header">
       <h2>👑 Admin Control</h2>
       <p>Viral Zone • Super Panel</p>
+      <button class="back-btn" style="margin:12px auto 0;" onclick="logoutAdmin()"><i class="fas fa-right-from-bracket"></i> Logout</button>
     </div>
 
     <div class="stats-row">
@@ -439,6 +453,7 @@ input[type="file"] {
       <input type="number" id="vReq" value="1" style="flex:1" placeholder="Ads Count">
     </div>
     <button class="action-btn" id="publishBtn" onclick="uploadVideo()">PUBLISH VIDEO</button>
+    <div id="publishedLink" style="display:none;margin-top:14px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:16px;padding:12px 14px;"></div>
 
     <div style="margin-top:22px;">
       <div class="admin-search">
@@ -573,6 +588,13 @@ input[type="file"] {
     <label class="help-text">Daily Limit</label>
     <input type="number" id="sLimit">
     <button class="action-btn" onclick="saveSettings()">Save</button>
+
+    <div class="chart-box" style="margin-top:20px;">
+      <h4><i class="fas fa-lock"></i> পাসওয়ার্ড পরিবর্তন</h4>
+      <input type="password" id="cpOld" placeholder="বর্তমান পাসওয়ার্ড">
+      <input type="password" id="cpNew" placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)">
+      <button class="action-btn small" onclick="changePassword()">Change Password</button>
+    </div>
   </div>
 </div>
 
@@ -621,10 +643,13 @@ input[type="file"] {
     <h4><i class="fas fa-pen"></i> মেসেজ</h4>
     <label class="help-text">টেক্সট (HTML চলবে: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;a href="..."&gt;link&lt;/a&gt;)</label>
     <textarea id="mText" style="height:120px" placeholder="🔥 নতুন ভিডিও এসেছে! এখনই দেখুন..."></textarea>
+    <label style="display:flex;gap:8px;align-items:center;font-size:12px;font-weight:600;color:#5b5570;margin-bottom:12px;">
+      <input type="checkbox" id="mBold" checked style="width:auto;margin:0;"> মেসেজ Bold করে পাঠান (ডিফল্ট চালু)
+    </label>
     <label class="help-text">ছবির URL (ঐচ্ছিক)</label>
     <input type="text" id="mPhoto" placeholder="https://...">
     <label class="help-text">বাটন (ঐচ্ছিক)</label>
-    <input type="text" id="mBtnText" placeholder="যেমন: ▶ এখনই দেখুন">
+    <input type="text" id="mBtnText" value="দেখুন" placeholder="বাটনের লেখা (খালি রাখলে বাটন যাবে না)">
     <select id="mBtnTarget" onchange="document.getElementById('mBtnVideo').style.display = this.value==='video' ? 'block' : 'none'">
       <option value="app">বাটন → অ্যাপ খুলবে</option>
       <option value="video">বাটন → নির্দিষ্ট ভিডিও খুলবে</option>
@@ -711,6 +736,99 @@ let allVideosAdmin = [];
 let videoSearchQuery = '';
 let uploadedImageUrl = '';
 let editingVideoId = null;
+let botAppLink = '';
+
+/* ============ ADMIN PASSWORD GATE ============ */
+const _enc = new TextEncoder();
+const _b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const _unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const PBKDF_ITER = 150000;
+async function derivePass(pass, saltBytes, iter) {
+  const key = await crypto.subtle.importKey('raw', _enc.encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: iter }, key, 256);
+  return _b64(bits);
+}
+async function makeAuthRecord(pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return { salt: _b64(salt), iter: PBKDF_ITER, hash: await derivePass(pass, salt, PBKDF_ITER) };
+}
+async function checkPass(pass, rec) {
+  return (await derivePass(pass, _unb64(rec.salt), rec.iter || PBKDF_ITER)) === rec.hash;
+}
+
+let authRec = null, gateReady = false, gateFails = 0, gateLockUntil = 0;
+function openGate() { document.getElementById('loginGate').style.display = 'flex'; }
+function unlockPanel() { document.getElementById('loginGate').style.display = 'none'; }
+
+async function initGate() {
+  const title = document.getElementById('gateTitle'), hint = document.getElementById('gateHint');
+  const btn = document.getElementById('gBtn'), p2 = document.getElementById('gPass2');
+  try {
+    if (!window.crypto || !crypto.subtle) throw new Error('এই পেজ https-এ খুলতে হবে');
+    authRec = (await get(ref(db, 'admin_auth'))).val();
+  } catch (e) {
+    hint.innerText = '❌ ' + e.message;
+    return;
+  }
+  gateReady = true;
+  btn.disabled = false;
+  if (!authRec) {
+    title.innerText = 'প্রথমবার: পাসওয়ার্ড সেট করুন';
+    hint.innerText = 'এই পাসওয়ার্ড দিয়েই ভবিষ্যতে Admin Panel খুলবেন।';
+    p2.style.display = 'block';
+    btn.innerText = 'Set Password';
+  } else {
+    title.innerText = 'Admin Login';
+    hint.innerText = 'পাসওয়ার্ড দিন';
+    btn.innerText = 'Login';
+    if (sessionStorage.getItem('adm_h') === authRec.hash) unlockPanel();
+  }
+}
+window.submitGate = async () => {
+  if (!gateReady) return;
+  const err = document.getElementById('gErr');
+  const pass = document.getElementById('gPass').value;
+  err.innerText = '';
+  if (!authRec) {
+    const pass2 = document.getElementById('gPass2').value;
+    if (pass.length < 6) { err.innerText = 'কমপক্ষে ৬ অক্ষর দিন'; return; }
+    if (pass !== pass2) { err.innerText = 'দুটো পাসওয়ার্ড মেলেনি'; return; }
+    const rec = await makeAuthRecord(pass);
+    await set(ref(db, 'admin_auth'), rec);
+    authRec = rec;
+    sessionStorage.setItem('adm_h', rec.hash);
+    unlockPanel();
+    return;
+  }
+  if (Date.now() < gateLockUntil) {
+    err.innerText = 'অপেক্ষা করুন: ' + Math.ceil((gateLockUntil - Date.now()) / 1000) + ' সেকেন্ড';
+    return;
+  }
+  if (await checkPass(pass, authRec)) {
+    gateFails = 0;
+    sessionStorage.setItem('adm_h', authRec.hash);
+    document.getElementById('gPass').value = '';
+    unlockPanel();
+  } else {
+    gateFails++;
+    err.innerText = '❌ ভুল পাসওয়ার্ড';
+    if (gateFails >= 3) { gateLockUntil = Date.now() + 30000; gateFails = 0; }
+  }
+};
+['gPass', 'gPass2'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitGate(); }));
+window.logoutAdmin = () => { sessionStorage.removeItem('adm_h'); location.reload(); };
+window.changePassword = async () => {
+  const oldP = document.getElementById('cpOld').value, newP = document.getElementById('cpNew').value;
+  if (!authRec || !(await checkPass(oldP, authRec))) { alert('❌ বর্তমান পাসওয়ার্ড ভুল'); return; }
+  if (newP.length < 6) { alert('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষর'); return; }
+  const rec = await makeAuthRecord(newP);
+  await set(ref(db, 'admin_auth'), rec);
+  authRec = rec;
+  sessionStorage.setItem('adm_h', rec.hash);
+  document.getElementById('cpOld').value = ''; document.getElementById('cpNew').value = '';
+  alert('✅ পাসওয়ার্ড বদলানো হয়েছে');
+};
+initGate();
 
 /* ============ NAVIGATION ============ */
 window.openSection = (id) => {
@@ -814,6 +932,7 @@ window.uploadVideo = async () => {
   btn.disabled = true;
   btn.innerText = 'PUBLISHING...';
 
+  const newCode = newShort();
   push(ref(db, 'videos'), {
     name: t,
     image_url: imageUrl,
@@ -821,10 +940,10 @@ window.uploadVideo = async () => {
     category: document.getElementById('vCat').value,
     ad_watches_required: parseInt(document.getElementById('vReq').value) || 1,
     created_at: Date.now(),
-    short: newShort(),
+    short: newCode,
     view_count: 0
   }).then(() => {
-    alert('✅ Video Published!');
+    showPublishedLink(newCode, t);
     document.getElementById('vTitle').value = '';
     document.getElementById('vImage').value = '';
     document.getElementById('vLink').value = '';
@@ -838,6 +957,50 @@ window.uploadVideo = async () => {
     btn.disabled = false;
     btn.innerText = 'PUBLISH VIDEO';
   });
+};
+
+/* ============ VIDEO LINKS ============ */
+function buildVideoLink(code) {
+  return botAppLink ? botAppLink + '?startapp=' + code : '';
+}
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).catch(() => fallbackCopyAdmin(text));
+  }
+  return fallbackCopyAdmin(text);
+}
+function fallbackCopyAdmin(text) {
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy') ? resolve() : reject(); } catch (e) { reject(e); }
+    ta.remove();
+  });
+}
+window.copyVideoLink = (id) => {
+  const v = allVideosAdmin.find(x => x.id === id);
+  if (!v) return;
+  const link = buildVideoLink(v.short || v.id);
+  if (!link) { alert('আগে সেটিংসে Web App Link দিন'); return; }
+  copyToClipboard(link).then(() => alert('✅ Link Copied:\n' + link)).catch(() => prompt('Link কপি করুন:', link));
+};
+function showPublishedLink(code, title) {
+  const box = document.getElementById('publishedLink');
+  const link = buildVideoLink(code);
+  box.style.display = 'block';
+  if (!link) {
+    box.innerHTML = '✅ <b>Published!</b><br><span style="font-size:12px;color:#6b7280;">লিংক পেতে সেটিংসে Web App Link দিন।</span>';
+    return;
+  }
+  box.innerHTML = '✅ <b>Published!</b> — ' + esc(title) +
+    '<div id="pubLinkText" style="font-size:13px;font-weight:600;color:#059669;margin:8px 0;word-break:break-all;">' + esc(link) + '</div>' +
+    '<button class="action-btn small" onclick="copyPublished()">📋 Link Copy</button>';
+  box.dataset.link = link;
+}
+window.copyPublished = () => {
+  const link = document.getElementById('publishedLink').dataset.link;
+  copyToClipboard(link).then(() => alert('✅ Link Copied')).catch(() => prompt('Link কপি করুন:', link));
 };
 
 /* ============ VIDEO LIST ============ */
@@ -874,8 +1037,10 @@ function renderVideoList() {
             <span class="badge-pill">${v.category || 'all'}</span>
             ${v.short ? `<span class="badge-pill" style="background:rgba(59,130,246,.12);color:#2563eb;">🔗 ${v.short}</span>` : ''}
           </small>
+          ${buildVideoLink(v.short || v.id) ? `<small style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:#059669;">${buildVideoLink(v.short || v.id).replace('https://','')}</small>` : ''}
         </div>
         <div class="item-actions">
+          <button class="edit-btn-mini" style="background:linear-gradient(135deg,#10b981,#059669);" onclick="copyVideoLink('${v.id}')"><i class="fas fa-link"></i></button>
           <button class="edit-btn-mini" onclick="openEditModal('${v.id}')"><i class="fas fa-edit"></i></button>
           <button class="del-btn" onclick="del('videos/${v.id}')">X</button>
         </div>
@@ -1197,6 +1362,8 @@ onValue(ref(db, 'settings'), s => {
     document.getElementById('sTut').value = s.val().tutorial_id || '';
     document.getElementById('sLimit').value = s.val().ads_limit || 20;
     document.getElementById('sBot').value = s.val().bot_app_link || '';
+    botAppLink = (s.val().bot_app_link || '').trim().replace(/\/+$/, '');
+    renderVideoList();
     const bu = document.getElementById('mUrl'); if (bu && document.activeElement !== bu) bu.value = s.val().broadcast_url || '';
     updateBotPreview();
     document.getElementById('monetagId').value = s.val().monetag_id || '';
@@ -1265,7 +1432,7 @@ window.msgUser = async (id) => {
   if (!token) { alert('আগে মেসেজ সেকশনে Bot Token সেভ করুন'); return; }
   const text = prompt('এই ইউজারকে মেসেজ লিখুন:');
   if (!text) return;
-  const r = await sendOne(token, id, text, '', '');
+  const r = await sendOne(token, id, '<b>' + text + '</b>', '', '');
   alert(r.ok ? '✅ পাঠানো হয়েছে' : '❌ ' + (r.description || 'Failed'));
 };
 window.delUser = (id) => {
@@ -1368,7 +1535,8 @@ async function sendOne(token, chatId, text, photo, markup) {
 window.sendBroadcast = async (testOnly) => {
   if (bcRunning) return;
   const token = document.getElementById('mToken').value.trim();
-  const text = document.getElementById('mText').value.trim();
+  const rawText = document.getElementById('mText').value.trim();
+  const text = (rawText && document.getElementById('mBold').checked) ? '<b>' + rawText + '</b>' : rawText;
   const photo = document.getElementById('mPhoto').value.trim();
   const btnText = document.getElementById('mBtnText').value.trim();
   const target = document.getElementById('mBtnTarget').value;
@@ -1449,7 +1617,7 @@ window.sendBroadcast = async (testOnly) => {
     if (rs.some(([k]) => /chat not found|initiate/i.test(k))) msg += '\n💡 এরা বট Start/Allow করেনি, তাই Telegram পাঠাতে দেয়নি।';
     status.innerText = msg;
     if (!testOnly) {
-      push(ref(db, 'broadcasts'), { ts: Date.now(), text: (text || '[photo]').slice(0, 200), total: ids.length, sent, failed });
+      push(ref(db, 'broadcasts'), { ts: Date.now(), text: (rawText || '[photo]').slice(0, 200), total: ids.length, sent, failed });
     }
     updateAudienceCount();
   }
