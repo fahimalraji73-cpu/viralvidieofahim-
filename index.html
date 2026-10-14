@@ -5,15 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Viral Zone</title>
 
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Hind+Siliguri:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Hind+Siliguri:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
 
 <!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <!-- Adsgram SDK -->
-<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+<script src="https://sad.adsgram.ai/js/sad.min.js" defer></script>
 <!-- Monetag SDK (static tag, standard Telegram Mini App way) -->
-<script src="https://libtl.com/sdk.js" data-zone="12004862" data-sdk="show_12004862"
+<script async src="https://libtl.com/sdk.js" data-zone="12004862" data-sdk="show_12004862"
         onload="window.__mtStatic='loaded'" onerror="window.__mtStatic='blocked/failed to load'"></script>
 
 <style>
@@ -313,6 +316,24 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
 @keyframes popIn{from{opacity:0;transform:translateY(14px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
 .section-title{margin:0 0 12px 6px;font-size:16px;font-weight:700;}
 .empty-text{text-align:center;color:#9ca3af;padding:26px 10px;font-size:13px;}
+
+/* ===== PERFORMANCE OVERRIDES (smooth scrolling on phones) ===== */
+body{background-attachment:scroll !important;}
+.single-view{background-attachment:scroll !important;}
+body::before,body::after{display:none !important;}
+.header::after,.unlock-btn::after{display:none !important;animation:none !important;}
+.new-badge{animation:none !important;}
+.card,.search-input,.filter-btn,.heart-btn,.link-btn,.back-btn,.info-box,.header{
+  -webkit-backdrop-filter:none !important;backdrop-filter:none !important;}
+.card{background:rgba(255,255,255,.9) !important;animation:none !important;
+  content-visibility:auto;contain-intrinsic-size:auto 330px;}
+.search-input,.filter-btn{background:rgba(255,255,255,.88) !important;}
+.header,.info-box{background:rgba(255,255,255,.88) !important;}
+.heart-btn,.link-btn{background:rgba(255,255,255,.92) !important;}
+.bottom-nav{-webkit-backdrop-filter:none !important;backdrop-filter:none !important;background:rgba(255,255,255,.96) !important;}
+.more-btn{width:100%;padding:14px;border:none;border-radius:16px;font-family:inherit;font-weight:700;font-size:13px;
+  color:#fff;background:var(--primary-gradient);cursor:pointer;box-shadow:0 8px 20px rgba(236,72,153,.25);}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
 </style>
 </head>
 <body>
@@ -392,7 +413,7 @@ body::after{background:radial-gradient(circle,#f9a8d4,transparent 70%);bottom:-1
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getDatabase, ref, onValue, runTransaction, set, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getDatabase, ref, onValue, runTransaction, set, update, increment } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBhKIxpistqd8LKSQFqPai44NTAXJ3SPoI",
@@ -455,11 +476,32 @@ const FALLBACK_IMG = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(
   "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"225\"><defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#8b5cf6\"/><stop offset=\"1\" stop-color=\"#ec4899\"/></linearGradient></defs><rect width=\"400\" height=\"225\" fill=\"url(#g)\"/><circle cx=\"200\" cy=\"98\" r=\"34\" fill=\"rgba(255,255,255,0.9)\"/><path d=\"M190 80 L222 98 L190 116 Z\" fill=\"#8b5cf6\"/><text x=\"200\" y=\"170\" font-size=\"18\" font-family=\"Arial\" font-weight=\"bold\" text-anchor=\"middle\" fill=\"rgba(255,255,255,0.95)\">VIDEO</text></svg>"
 );
 
+/* ============ SECURITY HELPERS ============ */
+const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const jsq = (t) => encodeURIComponent(String(t == null ? '' : t)).replace(/'/g, '%27');   // safe inside onclick='...'
+const safeUrl = (u) => {
+    try {
+        const x = new URL(String(u || '').trim(), location.href);
+        return ['http:', 'https:', 'tg:'].includes(x.protocol) ? x.href : '';
+    } catch (e) { return ''; }
+};
+const tutorialSrc = (t) => {
+    t = String(t || '').trim();
+    if (/^[\w-]{11}$/.test(t)) return 'https://www.youtube.com/embed/' + t;
+    const u = safeUrl(t);
+    return /^https:\/\//.test(u) ? u : '';
+};
+
 let allVideos=[], filters=[], menuLinks=[];
 let adsgramIds=[], bannerAds=[];
 let settings={ ads_limit: 20, bot_app_link: "", monetag_id: "", monetag_sdk_url: "" };
 let currentFilter = 'all';
 let deepLinkHandled = false;
+let videosSig = '';
+const PAGE_SIZE = 10;
+let visibleCount = PAGE_SIZE;
+const IMG_CDN = true;   // false = original image links (no resizing)
+const thumb = (u) => (IMG_CDN && /^https?:\/\//i.test(u)) ? 'https://wsrv.nl/?url=' + encodeURIComponent(u) + '&w=480&q=70&output=webp' : u;
 let monetagLoaded = false;
 let monetagZoneId = null;
 let monetagSdkUrl = '';
@@ -468,22 +510,24 @@ let monetagSdkUrl = '';
 (function registerUser() {
     const u = tg.initDataUnsafe?.user;
     if (!u || !u.id) return;   // only real Telegram users
-    runTransaction(ref(db, 'users/' + u.id), (cur) => ({
-        ...(cur || {}),
-        name: u.first_name || 'User',
-        username: u.username || '',
-        can_pm: u.allows_write_to_pm === true ? true : (cur && cur.can_pm === true),
+    let first = Number(localStorage.getItem('first_seen_ts')) || Date.now();
+    localStorage.setItem('first_seen_ts', String(first));
+    const data = {
+        name: String(u.first_name || 'User').slice(0, 100),
+        username: String(u.username || '').slice(0, 64),
         blocked: false,
-        first_seen: (cur && cur.first_seen) || Date.now(),
+        first_seen: first,
         last_seen: Date.now()
-    })).catch(() => {});
+    };
+    if (u.allows_write_to_pm === true) data.can_pm = true;
+    update(ref(db, 'users/' + u.id), data).catch(() => {});
 })();
 
 (function trackDAU() {
     const today = new Date().toISOString().slice(0,10);
     set(ref(db, 'analytics/dau/' + today + '/' + currentUserId), {
         ts: Date.now(),
-        name: tg.initDataUnsafe?.user?.first_name || 'User'
+        name: String(tg.initDataUnsafe?.user?.first_name || 'User').slice(0, 100)
     });
 })();
 
@@ -556,12 +600,22 @@ function loadMonetagSDK(zoneId, sdkUrl) {
 }
 
 function init() {
+    // show last known videos instantly while Firebase loads
+    try {
+        const c = JSON.parse(localStorage.getItem('vz_cache') || 'null');
+        if (Array.isArray(c) && c.length) {
+            allVideos = c;
+            videosSig = c.map(v => [v.id, v.name, v.image_url, v.download_link, v.category, v.ad_watches_required, v.short, v.created_at].join('|')).join('~');
+            renderFilters(); renderCards(); renderLiked();
+        }
+    } catch (e) {}
     onValue(ref(db, 'settings'), async s => {
         if(s.val()) {
             settings = s.val();
             if(settings.tutorial_id) {
-                document.getElementById('tutEmbed').innerHTML = 
-                    `<iframe src="${settings.tutorial_id}" style="width:100%;height:100%;border:0" allowfullscreen></iframe>`;
+                const tsrc = tutorialSrc(settings.tutorial_id);
+                document.getElementById('tutEmbed').innerHTML = tsrc
+                    ? `<iframe src="${esc(tsrc)}" style="width:100%;height:100%;border:0" allowfullscreen></iframe>` : '';
             }
 
             if(settings.monetag_id && settings.monetag_sdk_url) {
@@ -597,15 +651,19 @@ function init() {
     });
 
     onValue(ref(db, 'links'), s => { menuLinks=[]; if(s.val()) Object.values(s.val()).forEach(v=>menuLinks.push(v)); renderLinks(); });
-    onValue(ref(db, 'filters'), s => { filters=[]; if(s.val()) Object.values(s.val()).forEach(v=>filters.push(v)); });
+    onValue(ref(db, 'filters'), s => { filters=[]; if(s.val()) Object.values(s.val()).forEach(v=>filters.push(v));  renderFilters(); });
 
     onValue(ref(db, 'videos'), s => {
-        allVideos = [];
-        if(s.val()) Object.entries(s.val()).forEach(([k,v])=>allVideos.push({id:k,...v}));
-        allVideos.reverse();
-        renderFilters();
-        renderCards();
-        renderLiked();
+        const list = [];
+        if(s.val()) Object.entries(s.val()).forEach(([k,v])=>list.push({id:k,...v}));
+        list.reverse();
+        try { localStorage.setItem('vz_cache', JSON.stringify(list.slice(0, 40))); } catch (e) {}
+        // re-draw only when something visible changed (not for every view_count tick)
+        const sig = list.map(v => [v.id, v.name, v.image_url, v.download_link, v.category, v.ad_watches_required, v.short, v.created_at].join('|')).join('~');
+        const changed = sig !== videosSig;
+        videosSig = sig;
+        allVideos = list;
+        if (changed) { renderFilters(); renderCards(); renderLiked(); }
         checkDeepLink();
     });
 }
@@ -637,7 +695,7 @@ function renderFilters() {
     let html = `<button class="filter-btn trending-btn ${currentFilter==='trending'?'active':''}" onclick="setFilter('trending', this)">🔥 Trending <span class="badge">${getCount('trending')}</span></button>`;
     html += `<button class="filter-btn ${currentFilter==='all'?'active':''}" onclick="setFilter('all', this)">All <span class="badge">${getCount('all')}</span></button>`;
     filters.forEach(f => {
-        html += `<button class="filter-btn ${currentFilter===f.id?'active':''}" onclick="setFilter('${f.id}', this)">${f.name} <span class="badge">${getCount(f.id)}</span></button>`;
+        html += `<button class="filter-btn ${currentFilter===f.id?'active':''}" onclick="setFilter(decodeURIComponent('${jsq(f.id)}'), this)">${esc(f.name)} <span class="badge">${getCount(f.id)}</span></button>`;
     });
     div.innerHTML = html;
 }
@@ -659,16 +717,34 @@ function getFilteredList() {
 function renderCards() {
     const div = document.getElementById('cards');
     const list = getFilteredList();
-    div.innerHTML = list.length ? '' : '<p class="empty-text">😕 কোনো ভিডিও পাওয়া যায়নি</p>';
-    list.forEach((v, index) => {
-        div.appendChild(createCard(v));
+    if (!list.length) {
+        div.innerHTML = '<p class="empty-text">😕 কোনো ভিডিও পাওয়া যায়নি</p>';
+        return;
+    }
+    const frag = document.createDocumentFragment();
+    list.slice(0, visibleCount).forEach((v, index) => {
+        frag.appendChild(createCard(v));
         if ((index + 1) % 2 === 0 && bannerAds.length > 0) {
             const bannerDiv = document.createElement('div');
             bannerDiv.className = 'banner-wrapper';
             bannerDiv.innerHTML = bannerAds[Math.floor(Math.random() * bannerAds.length)];
-            div.appendChild(bannerDiv);
+            frag.appendChild(bannerDiv);
         }
     });
+    if (list.length > visibleCount) {
+        const more = document.createElement('button');
+        more.className = 'more-btn';
+        more.innerText = '⬇️ আরো দেখুন (' + (list.length - visibleCount) + ')';
+        more.onclick = () => { visibleCount += PAGE_SIZE; renderCards(); };
+        frag.appendChild(more);
+        if ('IntersectionObserver' in window) {
+            const io = new IntersectionObserver((es) => {
+                if (es[0].isIntersecting) { io.disconnect(); more.click(); }
+            }, { rootMargin: '500px' });
+            io.observe(more);
+        }
+    }
+    div.replaceChildren(frag);
 }
 
 function isNewVideo(created_at) {
@@ -682,27 +758,28 @@ function createCard(v) {
     const count = getProgress(v.id);
     const req = v.ad_watches_required || 1;
     const isUnlocked = count >= req;
-    const imgSrc = (v.image_url && String(v.image_url).trim()) ? v.image_url : FALLBACK_IMG;
+    const imgSrc = safeUrl(v.image_url) || FALLBACK_IMG;
+    const dl = safeUrl(v.download_link);
     const showNew = isNewVideo(v.created_at);
 
     const el = document.createElement('div');
     el.className = 'card';
     el.innerHTML = `
         <div class="media">
-            <img src="${imgSrc}" alt="" loading="lazy" referrerpolicy="no-referrer"
-                 onerror="this.onerror=null;this.src='${FALLBACK_IMG}'">
+            <img src="${esc(imgSrc === FALLBACK_IMG ? imgSrc : thumb(imgSrc))}" data-orig="${esc(imgSrc)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+                 onerror="if(this.dataset.orig&&this.src!==this.dataset.orig){this.src=this.dataset.orig}else{this.onerror=null;this.src='${FALLBACK_IMG}'}">
             ${showNew ? '<div class="new-badge"><i class="fas fa-bolt"></i> NEW</div>' : ''}
-            <button class="heart-btn" onclick="toggleLike('${v.id}')"><i class="${liked?'fas':'far'} fa-heart" style="color:${liked?'#ec4899':'#9ca3af'}"></i></button>
+            <button class="heart-btn" data-id="${esc(v.id)}" onclick="toggleLike(decodeURIComponent('${jsq(v.id)}'))"><i class="${liked?'fas':'far'} fa-heart" style="color:${liked?'#ec4899':'#9ca3af'}"></i></button>
         </div>
         <div class="meta">
             <div class="meta-header">
-                <h3>${v.name}</h3>
+                <h3>${esc(v.name)}</h3>
             </div>
             <div class="actions">
-                <button class="unlock-btn ${isUnlocked?'done':''}" onclick="handleUnlock('${v.id}', '${v.download_link}', ${req})">
+                <button class="unlock-btn ${isUnlocked?'done':''}" onclick="handleUnlock(decodeURIComponent('${jsq(v.id)}'), decodeURIComponent('${jsq(dl)}'), ${Number(req) || 1})">
                     ${isUnlocked ? '<i class="fas fa-download"></i> DOWNLOAD' : `<i class="fas fa-play"></i> UNLOCK (${count}/${req})`}
                 </button>
-                <button class="link-btn" onclick="copyLink('${v.id}')"><i class="fas fa-link"></i></button>
+                <button class="link-btn" onclick="copyLink(decodeURIComponent('${jsq(v.id)}'))"><i class="fas fa-link"></i></button>
             </div>
         </div>`;
     return el;
@@ -741,7 +818,7 @@ function fallbackCopy(text) {
 /* ============ UNLOCK FLOW ============ */
 window.handleUnlock = (id, link, req) => {
     const count = getProgress(id);
-    if(count >= req) { window.open(link, '_blank'); return; }
+    if(count >= req) { if(link) window.open(link, '_blank', 'noopener'); return; }
     if(getDaily() >= (settings.ads_limit||20)) { showToast("Daily limit reached!"); return; }
 
     const hasMonetag = !!monetagZoneId;
@@ -855,7 +932,7 @@ function incrementViewCount(videoId) {
     const storageKey = 'viewed_event_' + videoId;
     if(localStorage.getItem(storageKey)) return;
     const vidRef = ref(db, 'videos/' + videoId + '/view_count');
-    runTransaction(vidRef, (currentViews) => (currentViews || 0) + 1)
+    set(vidRef, increment(1))
         .then(() => { localStorage.setItem(storageKey, 'true'); })
         .catch(err => console.error("View update failed", err));
 }
@@ -863,9 +940,9 @@ function incrementViewCount(videoId) {
 function trackUnlock(videoId) {
     const today = new Date().toISOString().slice(0,10);
     const unlockRef = ref(db, 'analytics/unlocks/' + today + '/' + videoId);
-    runTransaction(unlockRef, (c) => (c || 0) + 1).catch(()=>{});
+    set(unlockRef, increment(1)).catch(()=>{});
     const userRef = ref(db, 'analytics/users/' + currentUserId + '/unlocks');
-    runTransaction(userRef, (c) => (c || 0) + 1).catch(()=>{});
+    set(userRef, increment(1)).catch(()=>{});
 }
 
 function startFinalCountdown(videoId, req) {
@@ -905,8 +982,8 @@ function renderLinks() {
         d.innerHTML += `
         <div class="card" style="padding:15px;display:flex;align-items:center;gap:15px;">
             <i class="fas fa-link" style="color:#8b5cf6;font-size:18px"></i>
-            <div style="flex:1;font-weight:600;font-size:14px;color:#241f3d;">${l.title}</div>
-            <a href="${l.url}" target="_blank" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:white;padding:7px 18px;border-radius:50px;text-decoration:none;font-size:12px;font-weight:600;box-shadow:0 6px 16px rgba(236,72,153,.3)">Open</a>
+            <div style="flex:1;font-weight:600;font-size:14px;color:#241f3d;">${esc(l.title)}</div>
+            <a href="${esc(safeUrl(l.url) || '#')}" target="_blank" rel="noopener noreferrer" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:white;padding:7px 18px;border-radius:50px;text-decoration:none;font-size:12px;font-weight:600;box-shadow:0 6px 16px rgba(236,72,153,.3)">Open</a>
         </div>`;
     });
 }
@@ -918,11 +995,11 @@ function renderLiked() {
     d.innerHTML = v.length?'':'<p class="empty-text">💔 পছন্দের ভিডিও নেই</p>';
     v.forEach(x=>d.appendChild(createCard(x)));
 }
-window.nav = (id, btn) => { ['homeSec','likedSec','tutSec','linkSec'].forEach(s=>document.getElementById(s).classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); if(id==='homeSec') document.getElementById('mainContent').style.display='block'; tg.HapticFeedback?.selectionChanged(); }
-window.setFilter = (id, btn) => { currentFilter=id; renderFilters(); renderCards(); tg.HapticFeedback?.selectionChanged(); }
-document.getElementById('searchInput').oninput = renderCards;
+window.nav = (id, btn) => { ['homeSec','likedSec','tutSec','linkSec'].forEach(s=>document.getElementById(s).classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); if(id==='homeSec') document.getElementById('mainContent').style.display='block'; if(id==='likedSec') renderLiked(); tg.HapticFeedback?.selectionChanged(); }
+window.setFilter = (id, btn) => { currentFilter=id; visibleCount=PAGE_SIZE; renderFilters(); renderCards(); tg.HapticFeedback?.selectionChanged(); }
+let __searchT; document.getElementById('searchInput').oninput = () => { clearTimeout(__searchT); __searchT = setTimeout(() => { visibleCount = PAGE_SIZE; renderCards(); }, 220); };
 function getLiked(){ return JSON.parse(localStorage.getItem('likes')||'[]'); }
-window.toggleLike=(id)=>{ let l=getLiked(); if(l.includes(id)) l=l.filter(x=>x!==id); else l.push(id); localStorage.setItem('likes',JSON.stringify(l)); renderCards(); renderLiked(); tg.HapticFeedback?.impactOccurred('light'); }
+window.toggleLike=(id)=>{ let l=getLiked(); if(l.includes(id)) l=l.filter(x=>x!==id); else l.push(id); localStorage.setItem('likes',JSON.stringify(l)); const nowLiked=l.includes(id); document.querySelectorAll('.heart-btn[data-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"] i').forEach(i=>{i.className=(nowLiked?'fas':'far')+' fa-heart'; i.style.color=nowLiked?'#ec4899':'#9ca3af';}); if(!document.getElementById('likedSec').classList.contains('hidden')) renderLiked(); tg.HapticFeedback?.impactOccurred('light'); }
 function getProgress(id){ return parseInt(localStorage.getItem('p_'+id)||0); }
 function getDaily(){ const d=JSON.parse(localStorage.getItem('daily')||'{}'); return d.date===new Date().toDateString()?d.count:0; }
 function incDaily(){ localStorage.setItem('daily', JSON.stringify({date:new Date().toDateString(), count:getDaily()+1})); }
